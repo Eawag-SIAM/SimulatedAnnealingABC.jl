@@ -7,7 +7,7 @@ using Random
 using UnPack: @unpack
 using Roots: find_zero
 using StatsBase: mean, cov, ecdf, sample, weights
-import Distributions
+using Distributions: Distribution, pdf
 import ProgressMeter
 
 export sabc
@@ -30,7 +30,7 @@ end
 Compute mean of distances WHY???
 """
 function rho_mean(ϵ, dists)
-    if ϵ <= eps(ϵ)
+    if ϵ <= eps()
         zero(eps)
     else
         (sum(exp.(-dists ./ ϵ) .* dists)) ./  sum(exp.(-dists ./ ϵ))
@@ -66,7 +66,7 @@ end
 # Arguments
 See docs for `sabc`.
 """
-function initialization_noninf(f_dist, r_prior, args...;
+function initialization_noninf(f_dist, prior::Distribution, args...;
                                n_particles, n_simulation, eps_init,
                                v=0.3, β=1.0, kwargs...)
 
@@ -74,9 +74,7 @@ function initialization_noninf(f_dist, r_prior, args...;
     ## Initialize containers
     ## ------------------------
 
-    θ = r_prior()
-    dim_par = length(θ)
-
+    θ = rand(prior)
     E = Vector{typeof(θ)}(undef, n_particles)
     P = typeof(θ)[]
 
@@ -99,7 +97,7 @@ function initialization_noninf(f_dist, r_prior, args...;
         end
 
         ## Generate new particle
-        θ = r_prior()
+        θ = rand(prior)
         ρ = f_dist(θ, args...; kwargs...)
 
         ## store parameter in P
@@ -141,7 +139,7 @@ end
 
 """
 ```
-    sabc(f_dist, d_prior, r_prior, args...;
+    sabc(f_dist,prior::Distribition, args...;
                      n_particles = 100, n_simulation=10_000,
                      eps_init = 1.0,
                      resample = n_particles,
@@ -154,8 +152,7 @@ end
 
 # Arguments
 - `f_dist`: Function that distance between data and a random sample from the likelihood. The first argument must be the parameter vector.
-- `d_prior`: Function that returns the density of the prior distribution.
-- `r_prior`: Function which returns one vector of a random realization of the prior distribution.
+- `prior`: A `Distribution` defining the prior.
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: number of simulalations from `f_dist`.
@@ -172,7 +169,7 @@ end
     - `prior_samples`
     - `eps`: value of epsilon at the last iteration.
 """
-function sabc(f_dist, d_prior, r_prior, args...;
+function sabc(f_dist, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               eps_init,
               resample = n_particles, # CHECK! meaningful default?
@@ -185,14 +182,14 @@ function sabc(f_dist, d_prior, r_prior, args...;
     ## Initialize
     ## ------------------------
 
-    @unpack E, dist_E, U, ϵ, Σ_jump, cdf_G, P = initialization_noninf(f_dist, r_prior, args...;
+    @unpack E, dist_E, U, ϵ, Σ_jump, cdf_G, P = initialization_noninf(f_dist, prior, args...;
                                                                       n_particles = n_particles,
                                                                       n_simulation = n_simulation,
                                                                       eps_init = eps_init,
                                                                       v=v, β=β,
                                                                       kwargs...)
 
-    dim_par = length(first(E))
+    dim_par = size(prior)
     n_simulation_init = length(P)
     @info "Ensample with $n_particles particles initialised with $n_simulation_init simulation."
 
@@ -210,9 +207,9 @@ function sabc(f_dist, d_prior, r_prior, args...;
 
         # proposal
         θproposal = E[idx] .+ rand(Distributions.MvNormal(zeros(dim_par), Σ_jump))
-        if d_prior(θproposal) > 0
+        if pdf(prior, θproposal) > 0
             dist_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
-            accept_prob = d_prior(θproposal) / d_prior(E[idx]) * exp((dist_E[idx] - dist_proposal) / ϵ)
+            accept_prob = pdf(prior, θproposal) / pdf(prior, E[idx]) * exp((dist_E[idx] - dist_proposal) / ϵ)
         else
             accept_prob = 0.0
         end

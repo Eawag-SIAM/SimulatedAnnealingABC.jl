@@ -20,13 +20,14 @@ using SimulatedAnnealingABC
 using Distributions
 
 ## Define model
-r_prior() = [randn(), rand()]
-d_prior(θ) = pdf(Normal(0,1), θ[1]) * pdf(Uniform(0,1), θ[2])
-
 f_dist(θ) = sum(abs2, rand(Normal(θ[1], θ[2]), 4))
 
+# define prior
+prior = product_distribution([Normal(0,1),   # theta[1]
+                              Uniform(0,1)]) # theta[2]
+
 ## Sample Posterior
-sabc(f_dist, d_prior, r_prior;
+sabc(f_dist, prior; eps_init = 1,
      n_particles = 100, n_simulation = 10_000)
 ```
 
