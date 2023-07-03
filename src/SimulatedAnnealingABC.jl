@@ -10,7 +10,7 @@ using StatsBase: mean, cov, ecdf, sample, weights
 import Distributions
 import ProgressMeter
 
-export sabc_noninf
+export sabc
 
 
 """
@@ -37,24 +37,37 @@ function rho_mean(ϵ, dists)
     end
 end
 
+"""
+Resample ensample
+
+"""
+function resample_ensample!(E, dist_E, U, δ)
+    n = length(E)
+    w = exp.(-dist_E .* δ ./ U)
+    idx_resampled = sample(1:n, weights(w), n, replace=true)
+
+    permute!(E, idx_resampled)
+    permute!(dist_E, idx_resampled)
+
+    @info "Resampling. Effective sample size: $(round(1/sum(abs2, w ./ sum(w)), digits=2))"
+end
+
+
+"""
+Estimate the coavariance for the jump distributions from an ensemble
+"""
+function estimate_jump_covariance(E, β)
+    β * cov(stack(E, dims=1)) + 1e-6*I
+end
 
 """
     Initialisation step
 
 # Arguments
-- `f_dist`: Function that  returns a the distance between data and a random sample from the likelhood. The first argument must be the parameter vector.
-- `d_prior`: Function that returns the density of the prior distribution.
-- `r_prior`: Function which returns one vector of a random realization of the prior distribution.
-- `n_sample`: Desired number of samples.
-- `eps_init`: Initial epsilon.
-- `iter_max`: Maximal number of iterations.
-- `v`: Tuning parameter.
-- `beta`: Tuning parameter.
-- `args...`: Further arguments passed to f_dist, aside of the parameter.
-
+See docs for `sabc`.
 """
-function initialization_noninf(f_dist, r_prior, args...; n_sample,
-                               eps_init=1.0, iter_max=10_000,
+function initialization_noninf(f_dist, r_prior, args...;
+                               n_particles, n_simulation, eps_init,
                                v=0.3, β=1.0, kwargs...)
 
     ## ------------------------
@@ -64,10 +77,10 @@ function initialization_noninf(f_dist, r_prior, args...; n_sample,
     θ = r_prior()
     dim_par = length(θ)
 
-    E = Vector{typeof(θ)}(undef, n_sample)
+    E = Vector{typeof(θ)}(undef, n_particles)
     P = typeof(θ)[]
 
-    dist_E = Vector{Float64}(undef, n_sample)
+    dist_E = Vector{Float64}(undef, n_particles)
     dist_P = Float64[]
 
 
@@ -77,18 +90,17 @@ function initialization_noninf(f_dist, r_prior, args...; n_sample,
 
     iter = 0
     counter = 0 # Number of accepted particles in E
-    progbar = ProgressMeter.Progress(n_sample, desc="Generating initial ensemble...", dt=0.5)
-    while counter < n_sample
+    progbar = ProgressMeter.Progress(n_particles, desc="Generating initial ensemble...", dt=0.5)
+    while counter < n_particles
 
         iter += 1
-        if iter > iter_max
-            error("'iter_max' reached! No initial sample could be generated.")
+        if iter > n_simulation
+            error("'n_simulation' reached! The initial sample could not be generated.")
         end
 
         ## Generate new particle
         θ = r_prior()
         ρ = f_dist(θ, args...; kwargs...)
-
 
         ## store parameter in P
         push!(P, θ)
@@ -111,15 +123,15 @@ function initialization_noninf(f_dist, r_prior, args...; n_sample,
     dist_P = cdf_G(dist_P)
 
     ##
-    U = mean(dist_E)            # CHECK!
+    U = mean(dist_E)            # CHECK! This is different in R code!
     ## or
     U = rho_mean(eps_init, dist_E)
 
-    # γ = ... ????              # Missing in R code?
+    # γ = ... ????              # Missing in R code? Compare to paper!
 
     ϵ = schedule(U, v)
 
-    Σ_jump = β * cov(stack(E, dims=1)) + 1e-6*I
+    Σ_jump = estimate_jump_covariance(E, β)
 
     return (E=E, dist_E=dist_E, P=P, U=U, ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump)
 
@@ -128,105 +140,111 @@ end
 
 
 """
-    SABC_noninf(f_dist, d_prior, r_prior, n_sample, eps_init, iter_max, v, beta, delta, resample, verbose=1, adaptjump=true, summarystats=false, y, f_summarystats; p...)
+```
+    sabc(f_dist, d_prior, r_prior, args...;
+                     n_particles = 100, n_simulation=10_000,
+                     eps_init = 1.0,
+                     resample = n_particles,
+                     v=0.3, β=1.0, δ=0.9,
+                     adaptjump = true,
+                     kwargs...)
 
-SABC.noninf Algorithm
+```
+# Simulated Annealing Approximtaive Bayeisain Inference Algorithm
 
 # Arguments
-- `f_dist`: Function that either returns a random sample from the likelihood or the distance between data and such a random sample. The first argument must be the parameter vector.
+- `f_dist`: Function that distance between data and a random sample from the likelihood. The first argument must be the parameter vector.
 - `d_prior`: Function that returns the density of the prior distribution.
 - `r_prior`: Function which returns one vector of a random realization of the prior distribution.
-- `n_sample`: Desired number of samples.
+- `args...`: Further arguments passed to `f_dist`
+- `n_particles`: Desired number of particles.
+- `n_simulation`: number of simulalations from `f_dist`.
 - `eps_init`: Initial epsilon.
-- `iter_max`: Maximal number of iterations.
-- `v`: Tuning parameter.
-- `beta`: Tuning parameter.
-- `delta`: Tuning parameter.
+- `v=0.3`: Tuning parameter.
+- `beta=1`: Tuning parameter.
+- `δ=0.9`: Tuning parameter.
 - `resample`: After how many accepted updates?
-- `p...`: Further arguments passed to f_dist, aside of the parameter.
+- `kwargs...`: Further arguments passed to `f_dist``
 
 # Returns
 - A named tuple with the following keys:
     - `posterior_samples`
     - `prior_samples`
-    - `eps`: Value of epsilon at final iteration.
+    - `eps`: value of epsilon at the last iteration.
 """
-function sabc_noninf(f_dist, d_prior, r_prior, args...;
-                     n_sample = 1000, resample = n_sample,
-                     eps_init=1.0, iter_max=10_000,
-                     v=0.3, β=1.0, δ=0.9,
-                     adaptjump = true,
-                     kwargs...)
+function sabc(f_dist, d_prior, r_prior, args...;
+              n_particles = 100, n_simulation = 10_000,
+              eps_init,
+              resample = n_particles, # CHECK! meaningful default?
+              v=0.3, β=1.5, δ=0.9,
+              adaptjump = true,
+              kwargs...)
+
 
     ## ------------------------
     ## Initialize
     ## ------------------------
 
-
     @unpack E, dist_E, U, ϵ, Σ_jump, cdf_G, P = initialization_noninf(f_dist, r_prior, args...;
-                                                                      n_sample = n_sample,
-                                                                      eps_init=eps_init,
-                                                                      iter_max=iter_max,
+                                                                      n_particles = n_particles,
+                                                                      n_simulation = n_simulation,
+                                                                      eps_init = eps_init,
                                                                       v=v, β=β,
                                                                       kwargs...)
 
     dim_par = length(first(E))
-
+    n_simulation_init = length(P)
+    @info "Ensample with $n_particles particles initialised with $n_simulation_init simulation."
 
     ## --------------
     ## Sampling
     ## --------------
 
-    progbar = ProgressMeter.Progress(iter_max, desc="Sampling...", dt=0.5)
+    progbar = ProgressMeter.Progress(n_simulation, desc="Sampling...", dt=0.5)
     show_summary(ϵ, U) = () -> [(:eps, ϵ), (:mean_distance, U)]
 
     accept = 0
-    for t in 1:iter_max
+    for _ in 1:(n_simulation - n_simulation_init)
 
-        idx = rand(1:n_sample)  # pick a particle
+        idx = rand(1:n_particles)  # pick a particle
 
         # proposal
-        theta_p = E[idx] + rand(Distributions.MvNormal(zeros(dim_par), Σ_jump))
-        if d_prior(theta_p) > 0
-            ρ_p = cdf_G(f_dist(theta_p, args...; kwargs...))
-
-            prior_prob = d_prior(theta_p) / d_prior(E[idx])
-            likeli_prob = exp((dist_E[idx] - ρ_p) / ϵ)
-            accept_prob = prior_prob * likeli_prob
+        θproposal = E[idx] .+ rand(Distributions.MvNormal(zeros(dim_par), Σ_jump))
+        if d_prior(θproposal) > 0
+            dist_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
+            accept_prob = d_prior(θproposal) / d_prior(E[idx]) * exp((dist_E[idx] - dist_proposal) / ϵ)
         else
             accept_prob = 0.0
         end
 
         # if isnan(accept_prob)
-        #     accept_prob = ifelse((E[idx] - ρ_p) < 0, 0.0, 1.0)
+        #     accept_prob = ifelse(dist_E[idx] < dist_proposal, 0.0, 1.0)
         # end
 
         if rand() < accept_prob
-            E[idx] = theta_p
-            dist_E[idx] = ρ_p
+            E[idx] = θproposal
+            dist_E[idx] = dist_proposal
 
             if adaptjump
-                Σ_jump = β * cov(stack(E, dims=1)) + 1e-6*I
-            end
+                Σ_jump = estimate_jump_covariance(E, β) # Do we want to do this every time?
+             end
 
-            U = mean(dist_E)
-            ϵ = schedule(U, v)
-            accept += 1
+             U = mean(dist_E)
+             ϵ = schedule(U, v)
+             accept += 1
         end
 
 
         # resample
         if (accept >= resample) && (U > eps())
-            w = exp.(-dist_E .* δ ./ U)
-            w = w ./ sum(w)
-            idx_resampled = sample(1:n_sample, weights(w), n_sample, replace=true)
-            E = E[idx_resampled, :]
+
+            resample_ensample!(E, dist_E, U, δ)
+
 
             ϵ = ϵ * (1 - δ)
-            U = mean(dist_E)
-            ϵ = schedule(U, v)
+            U = mean(dist_E)            # WHY?
+            ϵ = schedule(U, v)          # WHY? should be no change!
 
-            @info "Resampling. Effective sampling size: ", 1/sum(abs2, w ./ sum(w))
             accept = 0
         end
 

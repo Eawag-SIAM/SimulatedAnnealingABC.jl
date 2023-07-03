@@ -8,6 +8,11 @@
 
 ## Installation
 
+```Julia
+] add https://github.com/scheidan/SimulatedAnnealingABC.jl
+```
+Note, Julia 1.9 or newer is needed.
+
 ## Usage
 
 ```Julia
@@ -21,7 +26,10 @@ d_prior(θ) = pdf(Normal(0,1), θ[1]) * pdf(Uniform(0,1), θ[2])
 f_dist(θ) = sum(abs2, rand(Normal(θ[1], θ[2]), 4))
 
 ## Sample Posterior
-sabc_noninf(f_dist, d_prior, r_prior, n_sample = 1000)
+sabc(f_dist, d_prior, r_prior;
+     n_particles = 100, n_simulation = 10_000)
 ```
 
 ## References
+
+Albert, C., Künsch, H. R., & Scheidegger, A. (2015). A simulated annealing approach to approximate Bayes computations. Statistics and Computing, 25(6), 1217–1232.
