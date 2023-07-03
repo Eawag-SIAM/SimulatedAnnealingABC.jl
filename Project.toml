@@ -1,0 +1,13 @@
+name = "SimulatedAnnealingABC"
+uuid = "2e0e63f1-f03b-4682-b156-8f8e3c0454d9"
+authors = ["Andreas Scheidegger"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.9"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
