@@ -7,7 +7,7 @@ using Random
 using UnPack: @unpack
 using Roots: find_zero
 using StatsBase: mean, cov, ecdf, sample, weights
-using Distributions: Distribution, pdf
+using Distributions: Distribution, pdf, MvNormal
 import ProgressMeter
 
 export sabc
@@ -206,7 +206,7 @@ function sabc(f_dist, prior::Distribution, args...;
         idx = rand(1:n_particles)  # pick a particle
 
         # proposal
-        θproposal = E[idx] .+ rand(Distributions.MvNormal(zeros(dim_par), Σ_jump))
+        θproposal = E[idx] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
         if pdf(prior, θproposal) > 0
             dist_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
             accept_prob = pdf(prior, θproposal) / pdf(prior, E[idx]) * exp((dist_E[idx] - dist_proposal) / ϵ)
