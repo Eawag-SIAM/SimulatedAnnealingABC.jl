@@ -17,8 +17,8 @@ Solve for ϵ
 
 See eq(31)
 """
-function update_epsilon(u_posterior, v)
-    mean_u = mean(u_posterior)
+function update_epsilon(u, v)
+    mean_u = mean(u)
     ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
     ϵ_new, mean_u
 end
