@@ -25,10 +25,10 @@ end
 
 
 """
-Resample ensample
+Resample population
 
 """
-function resample_ensample!(samples_posterior, u_posterior, mean_u, δ)
+function resample_population!(samples_posterior, u_posterior, mean_u, δ)
     n = length(samples_posterior)
     w = exp.(-u_posterior .* δ ./ mean_u)
     idx_resampled = sample(1:n, weights(w), n, replace=true)
@@ -41,7 +41,7 @@ end
 
 
 """
-Estimate the coavariance for the jump distributions from an ensemble
+Estimate the coavariance for the jump distributions from an population
 """
 function estimate_jump_covariance(samples_posterior, β)
     β * cov(stack(samples_posterior, dims=1)) + 1e-6*I
@@ -71,7 +71,7 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
 
     iter = 0
     counter = 0 # Number of accepted particles in samples_posterior
-    progbar = ProgressMeter.Progress(n_particles, desc="Generating initial ensemble...", dt=0.5)
+    progbar = ProgressMeter.Progress(n_particles, desc="Generating initial population...", dt=0.5)
     while counter < n_particles
 
         iter += 1
@@ -218,7 +218,7 @@ function sabc(f_dist, prior::Distribution, args...;
         ## -- resample
         if (n_accept >= resample) && (mean_u > eps())
 
-            resample_ensample!(samples_posterior, u_posterior, mean_u, δ)
+            resample_population!(samples_posterior, u_posterior, mean_u, δ)
 
             ϵ, mean_u = update_epsilon(u_posterior, v)
 
