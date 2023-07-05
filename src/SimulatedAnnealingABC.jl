@@ -28,13 +28,13 @@ end
 Resample population
 
 """
-function resample_population!(population, u_posterior, mean_u, δ)
+function resample_population!(population, u, mean_u, δ)
     n = length(population)
-    w = exp.(-u_posterior .* δ ./ mean_u)
+    w = exp.(-u .* δ ./ mean_u)
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
     permute!(population, idx_resampled)
-    permute!(u_posterior, idx_resampled)
+    permute!(u, idx_resampled)
 
     @info "Resampling. Effective sample size: $(round(1/sum(abs2, w ./ sum(w)), digits=2))"
 end
@@ -101,15 +101,15 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
     ## empirical cdf of ρ under the prior
     cdf_G = ecdf(distances_prior)
 
-    u_posterior = cdf_G(distances)
+    u = cdf_G(distances)
 
-    ϵ, mean_u = update_epsilon(u_posterior, v)
+    ϵ, mean_u = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
 
     n_simulation = length(distances_prior)
     @info "Ensample with $n_particles particles initialised with $n_simulation simulation."
 
-    return (population=population, u_posterior=u_posterior,
+    return (population=population, u=u,
             mean_u=mean_u, ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump,
             n_simulation_init = n_simulation)
 
@@ -137,9 +137,9 @@ end
 - `n_particles`: Desired number of particles.
 - `n_simulation`: number of simulalations from `f_dist`.
 - `eps_init`: Initial epsilon.
-- `v=0.3`: Tuning parameter.
-- `beta=1`: Tuning parameter.
-- `δ=0.9`: Tuning parameter.
+- `v=0.3`: Tuning parameter for XXX
+- `beta=1`: Tuning parameter for XXX
+- `δ=0.9`: Tuning parameter for XXX
 - `resample`: After how many accepted updates?
 - `kwargs...`: Further arguments passed to `f_dist``
 
@@ -148,7 +148,7 @@ end
     - `posterior_samples`
     - `eps`: value of epsilon at the last iteration.
 """
-function sabc(f_dist, prior::Distribution, args...;
+function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               eps_init,
               resample = n_particles,
@@ -161,7 +161,7 @@ function sabc(f_dist, prior::Distribution, args...;
     ## Initialize
     ## ------------------------
 
-    @unpack (population, u_posterior, mean_u, ϵ, Σ_jump, cdf_G, n_simulation_init) =
+    @unpack (population, u, mean_u, ϵ, Σ_jump, cdf_G, n_simulation_init) =
         initialization_noninf(f_dist, prior, args...;
                               n_particles = n_particles,
                               n_simulation = n_simulation,
@@ -191,18 +191,18 @@ function sabc(f_dist, prior::Distribution, args...;
             # acceptance probability
             if pdf(prior, θproposal) > 0
                 u_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u_posterior[i] - u_proposal) / ϵ)
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
             else
                 accept_prob = 0.0
             end
 
             # if isnan(accept_prob)
-            #     accept_prob = u_posterior[i] < u_proposal ? 0.0 : 1.0
+            #     accept_prob = u[i] < u_proposal ? 0.0 : 1.0
             # end
 
             if rand() < accept_prob
                 population[i] = θproposal
-                u_posterior[i] = u_proposal
+                u[i] = u_proposal # transformed distances
                 n_accept += 1
             end
 
@@ -213,14 +213,14 @@ function sabc(f_dist, prior::Distribution, args...;
             Σ_jump = estimate_jump_covariance(population, β)
         end
 
-        ϵ, mean_u = update_epsilon(u_posterior, v)
+        ϵ, mean_u = update_epsilon(u, v)
 
         ## -- resample
         if (n_accept >= resample) && (mean_u > eps())
 
-            resample_population!(population, u_posterior, mean_u, δ)
+            resample_population!(population, u, mean_u, δ)
 
-            ϵ, mean_u = update_epsilon(u_posterior, v)
+            ϵ, mean_u = update_epsilon(u, v)
 
             n_accept = 0
         end
