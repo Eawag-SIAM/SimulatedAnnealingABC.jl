@@ -12,6 +12,8 @@ import ProgressMeter
 
 export sabc
 
+
+
 """
 Solve for ϵ
 
@@ -20,7 +22,7 @@ See eq(31)
 function update_epsilon(u, v)
     mean_u = mean(u)
     ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
-    ϵ_new, mean_u
+    ϵ_new
 end
 
 
@@ -28,9 +30,9 @@ end
 Resample population
 
 """
-function resample_population!(population, u, mean_u, δ)
+function resample_population!(population, u, δ)
     n = length(population)
-    w = exp.(-u .* δ ./ mean_u)
+    w = exp.(-u .* δ ./ mean(u))
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
     permute!(population, idx_resampled)
@@ -50,12 +52,18 @@ end
 """
 # Initialisation step
 
-## # Arguments
+## Arguments
 See docs for `sabc`.
+
+## Value
+
+- population
+- u
+- state
 """
-function initialization_noninf(f_dist, prior::Distribution, args...;
-                               n_particles, n_simulation, eps_init,
-                               v=0.3, β=1.0, kwargs...)
+function initialization(f_dist, prior::Distribution, args...;
+                        n_particles, n_simulation, eps_init,
+                        v=0.3, β=1.0, kwargs...)
 
     ## ------------------------
     ## Initialize containers
@@ -103,18 +111,79 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
 
     u = cdf_G(distances)
 
-    ϵ, mean_u = update_epsilon(u, v)
+    ϵ = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
 
+    # collect all parameters and states of the algorithm
     n_simulation = length(distances_prior)
+    state = (ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump,
+             n_simulation = n_simulation, n_accept = 0)
+
     @info "Ensample with $n_particles particles initialised with $n_simulation simulation."
 
-    return (population=population, u=u,
-            mean_u=mean_u, ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump,
-            n_simulation_init = n_simulation)
+    return (population=population, u=u, state=state)
 
 end
 
+
+"""
+Performs one update step for all particles and importance sampling if needed.
+
+Updates `population` and `u` in-place and return a new `state`.
+"""
+function update_population!(f_dist, prior, population, u, state, args...; v, β, δ, resample, kwargs...)
+
+    dim_par = length(first(population))
+
+    @unpack ϵ, n_accept, Σ_jump, cdf_G = state
+
+    ## -- update all particles (this can be multithreaded)
+    for i in eachindex(population)
+
+        # proposal
+        θproposal = population[i] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
+
+        # acceptance probability
+        if pdf(prior, θproposal) > 0
+            u_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
+            accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
+        else
+            accept_prob = 0.0
+        end
+
+        # if isnan(accept_prob)
+        #     accept_prob = u[i] < u_proposal ? 0.0 : 1.0
+        # end
+
+        if rand() < accept_prob
+            population[i] = θproposal
+            u[i] = u_proposal # transformed distances
+            n_accept += 1
+        end
+
+    end
+
+    ## -- update epsilon and jump distribution
+    Σ_jump = estimate_jump_covariance(population, β)
+    ϵ = update_epsilon(u, v)
+
+    ## -- resample
+    if n_accept >= resample
+
+        resample_population!(population, u, δ)
+
+        ϵ = update_epsilon(u, v)
+        n_accept = 0
+    end
+
+    # return new state
+    state = (ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump,
+             n_simulation = state.n_simulation + length(population),
+             n_accept = n_accept)
+
+    return state
+
+end
 
 
 """
@@ -124,7 +193,6 @@ end
                      eps_init = 1.0,
                      resample = n_particles,
                      v=0.3, β=1.0, δ=0.9,
-                     adaptjump = true,
                      kwargs...)
 
 ```
@@ -145,15 +213,15 @@ end
 
 ## Returns
 - A named tuple with the following keys:
-    - `posterior_samples`
-    - `eps`: value of epsilon at the last iteration.
+    - `population`
+    - `u`: vecotr with transformed distance
+    - `state`: state of the algorithm
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               eps_init,
               resample = n_particles,
               v=0.3, β=1.5, δ=0.9,
-              adaptjump = true,
               kwargs...)
 
 
@@ -161,75 +229,31 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     ## Initialize
     ## ------------------------
 
-    @unpack (population, u, mean_u, ϵ, Σ_jump, cdf_G, n_simulation_init) =
-        initialization_noninf(f_dist, prior, args...;
-                              n_particles = n_particles,
-                              n_simulation = n_simulation,
-                              eps_init = eps_init,
-                              v=v, β=β,
-                              kwargs...)
-
-    dim_par = size(prior)
-
+    @unpack population, u, state = initialization(f_dist, prior, args...;
+                                                  n_particles = n_particles,
+                                                  n_simulation = n_simulation,
+                                                  eps_init = eps_init,
+                                                  v=v, β=β,
+                                                  kwargs...)
 
     ## --------------
     ## Sampling
     ## --------------
 
     progbar = ProgressMeter.Progress(n_simulation, desc="Sampling...", dt=0.5)
-    show_summary(ϵ, mean_u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean_u)]
+    show_summary(state, u) = () -> [(:eps, state.ϵ), (:mean_transformed_distance, mean(u))]
 
-    n_accept = 0
-    for _ in 1:(n_simulation - n_simulation_init)
+    for _ in 1:(n_simulation - state.n_simulation)
 
-        ## -- update all particles (this can be multithreaded)
-        for i in 1:n_particles
-
-            # proposal
-            θproposal = population[i] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
-
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                u_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
-            else
-                accept_prob = 0.0
-            end
-
-            # if isnan(accept_prob)
-            #     accept_prob = u[i] < u_proposal ? 0.0 : 1.0
-            # end
-
-            if rand() < accept_prob
-                population[i] = θproposal
-                u[i] = u_proposal # transformed distances
-                n_accept += 1
-            end
-
-        end
-
-        ## -- update epsilon and jump distribution
-        if adaptjump
-            Σ_jump = estimate_jump_covariance(population, β)
-        end
-
-        ϵ, mean_u = update_epsilon(u, v)
-
-        ## -- resample
-        if (n_accept >= resample) && (mean_u > eps())
-
-            resample_population!(population, u, mean_u, δ)
-
-            ϵ, mean_u = update_epsilon(u, v)
-
-            n_accept = 0
-        end
+        # -- update all particles
+        state = update_population!(f_dist, prior, population, u, state, args...;
+                                   v=v, β=β, δ=δ, resample=resample, kwargs...)
 
         # update progressbar
-        ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, mean_u))
+        ProgressMeter.next!(progbar, showvalues = show_summary(state, u))
     end
 
-    return (posterior_samples=population, eps=ϵ)
+    return (population=population, u=u, state=state)
 end
 
 
