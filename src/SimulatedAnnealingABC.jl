@@ -28,12 +28,12 @@ end
 Resample population
 
 """
-function resample_population!(samples_posterior, u_posterior, mean_u, δ)
-    n = length(samples_posterior)
+function resample_population!(population, u_posterior, mean_u, δ)
+    n = length(population)
     w = exp.(-u_posterior .* δ ./ mean_u)
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
-    permute!(samples_posterior, idx_resampled)
+    permute!(population, idx_resampled)
     permute!(u_posterior, idx_resampled)
 
     @info "Resampling. Effective sample size: $(round(1/sum(abs2, w ./ sum(w)), digits=2))"
@@ -43,8 +43,8 @@ end
 """
 Estimate the coavariance for the jump distributions from an population
 """
-function estimate_jump_covariance(samples_posterior, β)
-    β * cov(stack(samples_posterior, dims=1)) + 1e-6*I
+function estimate_jump_covariance(population, β)
+    β * cov(stack(population, dims=1)) + 1e-6*I
 end
 
 """
@@ -61,16 +61,16 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
     ## Initialize containers
 
     θ = rand(prior)
-    samples_posterior = Vector{typeof(θ)}(undef, n_particles)
-    dist_posterior = Vector{Float64}(undef, n_particles)
-    dist_prior = Float64[]
+    population = Vector{typeof(θ)}(undef, n_particles)
+    distances = Vector{Float64}(undef, n_particles)
+    distances_prior = Float64[]
 
 
     ## ------------------
     ## Build prior sample
 
     iter = 0
-    counter = 0 # Number of accepted particles in samples_posterior
+    counter = 0 # Number of accepted particles in population
     progbar = ProgressMeter.Progress(n_particles, desc="Generating initial population...", dt=0.5)
     while counter < n_particles
 
@@ -84,13 +84,13 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
         ρ = f_dist(θ, args...; kwargs...)
 
         ## store distance
-        push!(dist_prior, ρ)
+        push!(distances_prior, ρ)
 
-        ## Accept with Prob = exp(-rho.p/eps.init) and store in samples_posterior
+        ## Accept with Prob = exp(-rho.p/eps.init) and store in population
         if rand() < exp(-ρ/eps_init)
             counter += 1
-            samples_posterior[counter] = θ
-            dist_posterior[counter] = ρ
+            population[counter] = θ
+            distances[counter] = ρ
             ProgressMeter.next!(progbar)
         end
     end
@@ -99,17 +99,17 @@ function initialization_noninf(f_dist, prior::Distribution, args...;
     ## Compute ϵ
 
     ## empirical cdf of ρ under the prior
-    cdf_G = ecdf(dist_prior)
+    cdf_G = ecdf(distances_prior)
 
-    u_posterior = cdf_G(dist_posterior)
+    u_posterior = cdf_G(distances)
 
     ϵ, mean_u = update_epsilon(u_posterior, v)
-    Σ_jump = estimate_jump_covariance(samples_posterior, β)
+    Σ_jump = estimate_jump_covariance(population, β)
 
-    n_simulation = length(dist_prior)
+    n_simulation = length(distances_prior)
     @info "Ensample with $n_particles particles initialised with $n_simulation simulation."
 
-    return (samples_posterior=samples_posterior, u_posterior=u_posterior,
+    return (population=population, u_posterior=u_posterior,
             mean_u=mean_u, ϵ=ϵ, cdf_G=cdf_G, Σ_jump=Σ_jump,
             n_simulation_init = n_simulation)
 
@@ -161,7 +161,7 @@ function sabc(f_dist, prior::Distribution, args...;
     ## Initialize
     ## ------------------------
 
-    @unpack (samples_posterior, u_posterior, mean_u, ϵ, Σ_jump, cdf_G, n_simulation_init) =
+    @unpack (population, u_posterior, mean_u, ϵ, Σ_jump, cdf_G, n_simulation_init) =
         initialization_noninf(f_dist, prior, args...;
                               n_particles = n_particles,
                               n_simulation = n_simulation,
@@ -186,12 +186,12 @@ function sabc(f_dist, prior::Distribution, args...;
         for i in 1:n_particles
 
             # proposal
-            θproposal = samples_posterior[i] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
+            θproposal = population[i] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
                 u_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, samples_posterior[i]) * exp((u_posterior[i] - u_proposal) / ϵ)
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u_posterior[i] - u_proposal) / ϵ)
             else
                 accept_prob = 0.0
             end
@@ -201,7 +201,7 @@ function sabc(f_dist, prior::Distribution, args...;
             # end
 
             if rand() < accept_prob
-                samples_posterior[i] = θproposal
+                population[i] = θproposal
                 u_posterior[i] = u_proposal
                 n_accept += 1
             end
@@ -210,7 +210,7 @@ function sabc(f_dist, prior::Distribution, args...;
 
         ## -- update epsilon and jump distribution
         if adaptjump
-            Σ_jump = estimate_jump_covariance(samples_posterior, β)
+            Σ_jump = estimate_jump_covariance(population, β)
         end
 
         ϵ, mean_u = update_epsilon(u_posterior, v)
@@ -218,7 +218,7 @@ function sabc(f_dist, prior::Distribution, args...;
         ## -- resample
         if (n_accept >= resample) && (mean_u > eps())
 
-            resample_population!(samples_posterior, u_posterior, mean_u, δ)
+            resample_population!(population, u_posterior, mean_u, δ)
 
             ϵ, mean_u = update_epsilon(u_posterior, v)
 
@@ -229,7 +229,7 @@ function sabc(f_dist, prior::Distribution, args...;
         ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, mean_u))
     end
 
-    return (posterior_samples=samples_posterior, eps=ϵ)
+    return (posterior_samples=population, eps=ϵ)
 end
 
 
