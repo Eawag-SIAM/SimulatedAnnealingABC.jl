@@ -246,7 +246,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.n_accept = n_accept
 
     @info "All particles have been $(n_simulation ÷ n_particles) times updated."
-    return nothing
+    return population_state
 
 end
 
