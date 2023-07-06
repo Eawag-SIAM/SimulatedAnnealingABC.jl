@@ -3,6 +3,7 @@ module SimulatedAnnealingABC
 
 using LinearAlgebra
 using Random
+import Base.show
 
 using UnPack: @unpack
 using StatsBase: mean, cov, ecdf, sample, weights
@@ -40,6 +41,17 @@ struct SABCresult{T, S}
     state::SABCstate
 end
 
+# Functions for pretty printing
+function show(io::Base.IO, s::SABCresult)
+    n_particles = length(s.population)
+    mean_u = mean(s.u)
+
+    println(io, "Approximate posterior sample with $n_particles particles:")
+    println(io, "  - simulations used: $(s.state.n_simulation)")
+    println(io, "  - average transformed distance: $mean_u")
+    println(io, "  - ϵ: $(s.state.ϵ)")
+    println(io, "The sample can be accessed with the field `population`.")
+end
 
 # -----------
 # algorithm
@@ -51,9 +63,9 @@ Solve for ϵ
 See eq(31)
 """
  function update_epsilon(u, v)
-    mean_u = mean(u)
-    ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
-    ϵ_new
+     mean_u = mean(u)
+     ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
+     ϵ_new
 end
 
 
