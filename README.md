@@ -18,7 +18,7 @@ Note, Julia 1.9 or newer is needed.
 ```Julia
 using SimulatedAnnealingABC
 using Distributions
-import MCMCChains (optional)
+import MCMCChains  # (optional)
 
 ## Define model
 f_dist(θ) = sum(abs2, rand(Normal(θ[1], θ[2]), 4))
@@ -27,12 +27,22 @@ f_dist(θ) = sum(abs2, rand(Normal(θ[1], θ[2]), 4))
 prior = product_distribution([Normal(0,1),   # theta[1]
                               Uniform(0,1)]) # theta[2]
 
+## ----------------
 ## Sample Posterior
+
 res = sabc(f_dist, prior; eps_init = 1,
            n_particles = 100, n_simulation = 10_000)
 
 ## MCMCChains can help to work with the samples
-chn = MCMCChains.Chains(res.posterior_samples)
+chn = MCMCChains.Chains(res.population)
+
+
+## ----------------
+## update existing population with another 10_000 simulations
+
+update_population!(res, f_dist, prior;
+                   n_simulation = 10_000)
+
 ```
 
 ## References
