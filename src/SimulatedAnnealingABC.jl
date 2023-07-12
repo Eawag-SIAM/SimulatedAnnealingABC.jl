@@ -118,7 +118,7 @@ See docs for `sabc`.
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation, eps_init,
-                        v=0.3, β=1.0, kwargs...)
+                        v=1.2, β=0.8, kwargs...)
 
     ## ------------------------
     ## Initialize containers
@@ -269,7 +269,7 @@ end
                      n_particles = 100, n_simulation = 10_000,
                      eps_init = 1.0,
                      resample = n_particles,
-                     v=0.3, β=1.0, δ=0.9,
+                     v=1.2, β=0.8, δ=0.1,
                      kwargs...)
 
 ```
@@ -282,9 +282,9 @@ end
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
 - `eps_init`: Initial epsilon.
-- `v=0.3`: Tuning parameter for XXX
-- `beta=1`: Tuning parameter for XXX
-- `δ=0.9`: Tuning parameter for XXX
+- `v=1.2`: Tuning parameter for XXX
+- `beta=0.8`: Tuning parameter for XXX
+- `δ=0.1`: Tuning parameter for XXX
 - `resample`: After how many accepted updates?
 - `kwargs...`: Further arguments passed to `f_dist``
 
@@ -295,7 +295,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               eps_init,
               resample = n_particles,
-              v=0.3, β=1.5, δ=0.9,
+              v=1.2, β=0.8, δ=0.1,
               kwargs...)
 
 
