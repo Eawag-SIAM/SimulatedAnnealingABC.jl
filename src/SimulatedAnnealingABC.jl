@@ -7,7 +7,7 @@ import Base.show
 
 using UnPack: @unpack
 using StatsBase: mean, cov, ecdf, sample, weights
-using Distributions: Distribution, pdf, MvNormal
+using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 import ProgressMeter
 
@@ -23,7 +23,7 @@ Holds states of algorithm
 mutable struct SABCstate
     ϵ::Float64                  # change to Vector{Float64} for multible espilon
     cdf_G
-    Σ_jump::Matrix{Float64}
+    Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
     n_accept::Int
 end
@@ -91,6 +91,18 @@ Estimate the coavariance for the jump distributions from an population
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-6*I
 end
+
+"""
+Proposal for n-dimensions, n > 1
+"""
+proposal(θ, Σ::Matrix) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
+
+
+"""
+Proposal for 1-dimensions
+"""
+proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
+
 
 """
 # Initialisation step
@@ -204,7 +216,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         for i in eachindex(population)
 
             # proposal
-            θproposal = population[i] .+ rand(MvNormal(zeros(dim_par), Σ_jump))
+            θproposal = proposal(population[i], Σ_jump)
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
@@ -241,7 +253,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     # update state
     state.ϵ = ϵ
-    state.Σ_jump .= Σ_jump
+    state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
 
