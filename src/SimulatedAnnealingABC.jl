@@ -6,7 +6,8 @@ using Random
 import Base.show
 
 using UnPack: @unpack
-using StatsBase: mean, cov, ecdf, sample, weights
+import StatsBase
+using StatsBase: mean, cov, sample, weights
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 import ProgressMeter
@@ -22,7 +23,7 @@ Holds states of algorithm
 """
 mutable struct SABCstate
     ϵ::Float64                  # change to Vector{Float64} for multible espilon
-    cdf_G
+    cdf_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
     n_accept::Int
@@ -52,6 +53,8 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "  - ϵ: $(s.state.ϵ)")
     println(io, "The sample can be accessed with the field `population`.")
 end
+
+
 
 # -----------
 # algorithm
@@ -91,6 +94,18 @@ Estimate the coavariance for the jump distributions from an population
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-6*I
 end
+
+
+"""
+Estimate the cdf of the distances under the prior.
+Returns a function.
+"""
+function build_cdf(distances)
+    StatsBase.ecdf(distances)
+end
+
+
+
 
 """
 Proposal for n-dimensions, n > 1
@@ -162,9 +177,9 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Compute ϵ
 
     ## empirical cdf of ρ under the prior
-    cdf_G = ecdf(distances_prior)
+    cdf_dist_prior = build_cdf(distances_prior)
 
-    u = cdf_G(distances)
+    u = cdf_dist_prior(distances)
 
     ϵ = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
@@ -173,7 +188,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation = length(distances_prior)
 
     state = SABCstate(ϵ,
-                      cdf_G,
+                      cdf_dist_prior,
                       Σ_jump,
                       n_simulation,
                       0)
@@ -201,7 +216,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             kwargs...)
 
     @unpack population, u, state = population_state
-    @unpack ϵ, n_accept, Σ_jump, cdf_G = state
+    @unpack ϵ, n_accept, Σ_jump, cdf_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -220,7 +235,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                u_proposal = cdf_G(f_dist(θproposal, args...; kwargs...))
+                u_proposal = cdf_dist_prior(f_dist(θproposal, args...; kwargs...))
                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
             else
                 accept_prob = 0.0
