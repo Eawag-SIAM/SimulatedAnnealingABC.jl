@@ -6,7 +6,7 @@ using Distributions
 @testset "Sampling 1-dim" begin
 
     ## Define model
-    f_dist(θ) = 0 - rand(Normal(θ[1], 1))
+    f_dist(θ) = abs(0.0 - rand(Normal(θ[1], 1)))
     prior = Uniform(-10,10)
 
     # n_simulation too small

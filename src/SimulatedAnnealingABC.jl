@@ -8,6 +8,8 @@ import Base.show
 using UnPack: @unpack
 import StatsBase
 using StatsBase: mean, cov, sample, weights
+using Interpolations: interpolate, extrapolate,
+    LinearMonotonicInterpolation, SteffenMonotonicInterpolation, Flat
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 import ProgressMeter
@@ -97,13 +99,33 @@ end
 
 
 """
-Estimate the cdf of the distances under the prior.
+Estimate the cdf of data `x`.
 Returns a function.
 """
-function build_cdf(distances)
-    StatsBase.ecdf(distances)
+function build_cdf(x)
+    StatsBase.ecdf(x)
 end
 
+"""
+Estimate the empirical cdf of data `x`
+smoothed by interpolation.
+
+Returns a function.
+"""
+function build_cdf_smoothed(x)
+    n = length(x)
+    # note, we add a 0 and 1 probability points
+    probs = [0; [(k - 0.5)/n for k in 1:n]; 1]
+    a = 1.5
+    values = [0; sort(x); maximum(x)*a]
+
+    extrapolate(interpolate(values, probs,
+                            LinearMonotonicInterpolation()
+                            #SteffenMonotonicInterpolation()
+                            ),
+                Flat())
+
+end
 
 
 
@@ -177,7 +199,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Compute ϵ
 
     ## empirical cdf of ρ under the prior
-    cdf_dist_prior = build_cdf(distances_prior)
+    cdf_dist_prior = build_cdf_smoothed(distances_prior)
 
     u = cdf_dist_prior(distances)
 
