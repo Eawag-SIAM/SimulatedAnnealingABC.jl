@@ -207,6 +207,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Compute ϵ for every statistic
 
     ## empirical cdfs of ρ under the prior
+    any(distances_prior .< 0) && error("Negative distances are not allowed!")
     cdf_dist_prior = map(build_cdf_smoothed, eachrow(distances_prior))
 
     ϵ = zeros(n_stats)
