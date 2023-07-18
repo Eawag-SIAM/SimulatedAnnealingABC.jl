@@ -337,7 +337,7 @@ end
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
 - `eps_init`: Initial epsilon(s)
-- `v=1.2`: Tuning parameter for XXX
+- `v=1.2`: Tuning parameter for annealing speed
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
 - `resample`: After how many accepted updates?
