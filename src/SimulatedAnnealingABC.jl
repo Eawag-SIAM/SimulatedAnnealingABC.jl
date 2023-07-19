@@ -1,21 +1,18 @@
 module SimulatedAnnealingABC
 
 
-import Base.show
 using LinearAlgebra
 using Random
+import Base.show
 
-using ElasticArrays
 using UnPack: @unpack
-import ProgressMeter
-
 import StatsBase
 using StatsBase: mean, cov, sample, weights
 using Interpolations: interpolate, extrapolate,
     LinearMonotonicInterpolation, SteffenMonotonicInterpolation, Flat
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
-
+import ProgressMeter
 
 export sabc, update_population!
 
@@ -27,8 +24,8 @@ export sabc, update_population!
 Holds states of algorithm
 """
 mutable struct SABCstate
-    ϵ::Vector{Float64}
-    cdf_dist_prior::Vector                   # functions G in Albert et al.
+    ϵ::Float64                  # change to Vector{Float64} for multible espilon
+    cdf_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
     n_accept::Int
@@ -43,7 +40,7 @@ Holds results
 """
 struct SABCresult{T, S}
     population::Vector{T}
-    u::Array{S}
+    u::Vector{S}
     state::SABCstate
 end
 
@@ -83,9 +80,7 @@ Resample population
 """
 function resample_population!(population, u, δ)
     n = length(population)
-    u_means = mean(u, dims=1)
-    w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
-
+    w = exp.(-u .* δ ./ mean(u))
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
     permute!(population, idx_resampled)
@@ -96,7 +91,7 @@ end
 
 
 """
-Estimate the coavaqriance for the jump distributions from an population
+Estimate the coavariance for the jump distributions from an population
 """
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-6*I
@@ -166,12 +161,9 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Initialize containers
 
     θ = rand(prior)
-    ρ = f_dist(θ, args...; kwargs...)
-    n_stats = length(ρ)
-
     population = Vector{typeof(θ)}(undef, n_particles)
-    distances = Array{eltype(ρ)}(undef, n_particles, n_stats)
-    distances_prior = ElasticArray{eltype(ρ)}(undef, n_stats, 0)
+    distances = Vector{Float64}(undef, n_particles)
+    distances_prior = Float64[]
 
 
     ## ------------------
@@ -192,31 +184,27 @@ function initialization(f_dist, prior::Distribution, args...;
         ρ = f_dist(θ, args...; kwargs...)
 
         ## store distance
-        append!(distances_prior, ρ)
+        push!(distances_prior, ρ)
 
-        ## Accept with Prob = exp(-rho/eps.init) and store in population
-        if rand() < exp(-sum(ρ ./ eps_init))
+        ## Accept with Prob = exp(-rho.p/eps.init) and store in population
+        if rand() < exp(-ρ/eps_init)
             counter += 1
             population[counter] = θ
-            distances[counter,:] .= ρ
+            distances[counter] = ρ
             ProgressMeter.next!(progbar)
         end
     end
 
     ## ----------------------------------
-    ## Compute ϵ for every statistic
+    ## Compute ϵ
 
-    ## empirical cdfs of ρ under the prior
+    ## empirical cdf of ρ under the prior
     any(distances_prior .< 0) && error("Negative distances are not allowed!")
-    cdf_dist_prior = map(build_cdf_smoothed, eachrow(distances_prior))
+    cdf_dist_prior = build_cdf_smoothed(distances_prior)
 
-    ϵ = zeros(n_stats)
-    u = similar(distances)
-    for i in 1:n_stats
-        u[:,i] .= cdf_dist_prior[i].(distances[:,i])
-        ϵ[i] = update_epsilon(u[:,i], v)
-    end
+    u = cdf_dist_prior(distances)
 
+    ϵ = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
 
     # collect all parameters and states of the algorithm
@@ -254,13 +242,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     @unpack ϵ, n_accept, Σ_jump, cdf_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
-    n_stats = length(ϵ)
 
-    ## number of calls of `f_dist`
-    n_updates = (n_simulation ÷ n_particles) * n_particles
+    n_updates = (n_simulation ÷ n_particles) * n_particles # number of calls to `f_dist`
 
     progbar = ProgressMeter.Progress(n_updates, desc="Updating...", dt=0.5)
-    show_summary(state, u) = () -> [(:eps, state.ϵ), (:mean_transformed_distances, mean(u, dims=1))]
+    show_summary(state, u) = () -> [(:eps, state.ϵ), (:mean_transformed_distance, mean(u))]
 
     for _ in 1:(n_simulation ÷ n_particles)
 
@@ -272,17 +258,15 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                dists = f_dist(θproposal, args...; kwargs...)
-                u_proposal = [cdf_dist_prior[k](dists[k]) for k in 1:n_stats]
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(-sum((u_proposal .- u[i,:]) ./ ϵ))
-
+                u_proposal = cdf_dist_prior(f_dist(θproposal, args...; kwargs...))
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
             else
                 accept_prob = 0.0
             end
+
             if rand() < accept_prob
                 population[i] = θproposal
-                u[i,:] .= u_proposal # transformed distances
+                u[i] = u_proposal # transformed distances
                 n_accept += 1
             end
 
@@ -306,7 +290,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     end
 
     # update state
-    state.ϵ .= ϵ
+    state.ϵ = ϵ
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
@@ -321,7 +305,7 @@ end
 ```
     sabc(f_dist, prior::Distribition, args...;
                      n_particles = 100, n_simulation = 10_000,
-                     eps_init::Union{Real, Vector{Real}, Tuple{Real}},
+                     eps_init = 1.0,
                      resample = n_particles,
                      v=1.2, β=0.8, δ=0.1,
                      kwargs...)
@@ -330,13 +314,12 @@ end
 # Simulated Annealing Approximtaive Bayesian Inference Algorithm
 
 ## Arguments
-- `f_dist`: Function returns distance(s) between data and a random sample from the likelihood.
-            The first argument must be the parameter vector.
+- `f_dist`: Function that distance between data and a random sample from the likelihood. The first argument must be the parameter vector.
 - `prior`: A `Distribution` defining the prior.
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
-- `eps_init`: Initial epsilon(s)
+- `eps_init`: Initial epsilon.
 - `v=1.2`: Tuning parameter for XXX
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
