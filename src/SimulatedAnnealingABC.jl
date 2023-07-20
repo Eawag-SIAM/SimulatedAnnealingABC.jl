@@ -28,7 +28,7 @@ mutable struct SABCstate
     cdf_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
-    n_accept::Int
+    n_accept::Int               # number of accepted updates
 end
 
 """
@@ -47,12 +47,15 @@ end
 # Functions for pretty printing
 function show(io::Base.IO, s::SABCresult)
     n_particles = length(s.population)
-    mean_u = mean(s.u)
+    mean_u = round(mean(s.u), sigdigits = 4)
+    acc_rate =  round(s.state.n_accept / (s.state.n_simulation - n_particles),
+                      sigdigits = 4)
 
     println(io, "Approximate posterior sample with $n_particles particles:")
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - average transformed distance: $mean_u")
-    println(io, "  - ϵ: $(s.state.ϵ)")
+    println(io, "  - ϵ: $(round(s.state.ϵ, sigdigits=4))")
+    println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
 end
 
@@ -249,6 +252,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     for _ in 1:(n_simulation ÷ n_particles)
 
+        counter_accept = 0
+
         ## -- update all particles (this can be multithreaded)
         for i in eachindex(population)
 
@@ -267,6 +272,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i] = u_proposal # transformed distances
                 n_accept += 1
+                counter_accept += 1
             end
 
         end
@@ -276,12 +282,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ϵ = update_epsilon(u, v)
 
         ## -- resample
-        if n_accept >= resample
+        if resample - mod(n_accept, resample) <= counter_accept
 
             resample_population!(population, u, δ)
 
+            Σ_jump = estimate_jump_covariance(population, β)
             ϵ = update_epsilon(u, v)
-            n_accept = 0
+
         end
 
         # update progressbar
