@@ -86,7 +86,6 @@ function resample_population!(population, u, δ)
     permute!(population, idx_resampled)
     permute!(u, idx_resampled)
 
-    @info "Resampling. Effective sample size: $(round(1/sum(abs2, w ./ sum(w)), digits=2))"
 end
 
 
@@ -246,7 +245,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_updates = (n_simulation ÷ n_particles) * n_particles # number of calls to `f_dist`
 
     progbar = ProgressMeter.Progress(n_updates, desc="Updating...", dt=0.5)
-    show_summary(state, u) = () -> [(:eps, state.ϵ), (:mean_transformed_distance, mean(u))]
+    show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
 
     for _ in 1:(n_simulation ÷ n_particles)
 
@@ -286,7 +285,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         end
 
         # update progressbar
-        ProgressMeter.next!(progbar, showvalues = show_summary(state, u))
+        ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
     end
 
     # update state
@@ -295,7 +294,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.n_simulation += n_updates
     state.n_accept = n_accept
 
-    @info "All particles have been $(n_simulation ÷ n_particles) times updated."
+    @info "All particles have been updated $(n_simulation ÷ n_particles) times."
     return population_state
 
 end
