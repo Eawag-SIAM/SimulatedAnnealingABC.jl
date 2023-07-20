@@ -6,13 +6,13 @@ using Random
 import Base.show
 
 using UnPack: @unpack
-import StatsBase
 using StatsBase: mean, cov, sample, weights
-using Interpolations: interpolate, extrapolate,
-    LinearMonotonicInterpolation, SteffenMonotonicInterpolation, Flat
+
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 import ProgressMeter
+
+include("cdf_estimators.jl")
 
 export sabc, update_population!
 
@@ -24,7 +24,7 @@ export sabc, update_population!
 Holds states of algorithm
 """
 mutable struct SABCstate
-    ϵ::Float64                  # change to Vector{Float64} for multible espilon
+    ϵ::Float64
     cdf_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
@@ -34,7 +34,7 @@ end
 """
 Holds results
 
-- `population`: vector of parameteer samples from the approximative posterior
+- `population`: vector of parameter samples from the approximative posterior
 - `u`: transformed distances
 - `state`: state of algorithm
 """
@@ -98,36 +98,6 @@ function estimate_jump_covariance(population, β)
 end
 
 
-"""
-Estimate the cdf of data `x`.
-Returns a function.
-"""
-function build_cdf(x)
-    StatsBase.ecdf(x)
-end
-
-"""
-Estimate the empirical cdf of data `x`
-smoothed by interpolation.
-
-Returns a function.
-"""
-function build_cdf_smoothed(x)
-    n = length(x)
-    # note, we add a 0 and 1 probability points
-    probs = [0; [(k - 0.5)/n for k in 1:n]; 1]
-    a = 1.5
-    values = [0; sort(x); maximum(x)*a]
-
-    extrapolate(interpolate(values, probs,
-                            LinearMonotonicInterpolation()
-                            #SteffenMonotonicInterpolation()
-                            ),
-                Flat())
-
-end
-
-
 
 """
 Proposal for n-dimensions, n > 1
@@ -154,69 +124,60 @@ See docs for `sabc`.
 - state
 """
 function initialization(f_dist, prior::Distribution, args...;
-                        n_particles, n_simulation, eps_init,
-                        v=1.2, β=0.8, kwargs...)
+                        n_particles, n_simulation,
+                        v, β, kwargs...)
+
+    n_simulation < n_particles &&
+        error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
     ## ------------------------
     ## Initialize containers
 
     θ = rand(prior)
+    ρ = f_dist(θ, args...; kwargs...)
+    n_stats = length(ρ)
+
     population = Vector{typeof(θ)}(undef, n_particles)
-    distances = Vector{Float64}(undef, n_particles)
-    distances_prior = Float64[]
+    distances_prior = Array{eltype(ρ)}(undef, n_particles, n_stats)
 
 
     ## ------------------
     ## Build prior sample
 
-    iter = 0
-    counter = 0 # Number of accepted particles in population
-    progbar = ProgressMeter.Progress(n_particles, desc="Generating initial population...", dt=0.5)
-    while counter < n_particles
-
-        iter += 1
-        if iter > n_simulation
-            error("The initial population could not be generated. 'n_simulation' is to small!")
-        end
-
-        ## Generate new particle
+    for i in 1:n_particles
+        # sample
         θ = rand(prior)
         ρ = f_dist(θ, args...; kwargs...)
 
-        ## store distance
-        push!(distances_prior, ρ)
-
-        ## Accept with Prob = exp(-rho.p/eps.init) and store in population
-        if rand() < exp(-ρ/eps_init)
-            counter += 1
-            population[counter] = θ
-            distances[counter] = ρ
-            ProgressMeter.next!(progbar)
-        end
+        ## store parameter and distances
+        population[i] = θ
+        distances_prior[i,:] .= ρ
     end
 
+
     ## ----------------------------------
-    ## Compute ϵ
+    ## learn cdf and compute ϵ
 
-    ## empirical cdf of ρ under the prior
+    ## estimate cdf of ρ under the prior
     any(distances_prior .< 0) && error("Negative distances are not allowed!")
-    cdf_dist_prior = build_cdf_smoothed(distances_prior)
 
-    u = cdf_dist_prior(distances)
+    cdf_dist_prior = build_cdf(distances_prior)
+
+    u = [cdf_dist_prior(ρ) for ρ in eachrow(distances_prior)]
+
 
     ϵ = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
 
     # collect all parameters and states of the algorithm
-    n_simulation = length(distances_prior)
-
+    n_simulation = n_particles + 1
     state = SABCstate(ϵ,
                       cdf_dist_prior,
                       Σ_jump,
                       n_simulation,
                       0)
 
-    @info "Population with $n_particles particles initialised using $n_simulation simulation."
+    @info "Population with $n_particles particles initialised."
 
     return SABCresult(population, u, state)
 
@@ -234,7 +195,7 @@ See `sabc`
 """
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
-                            v=0.3, β=1.5, δ=0.9,
+                            v=1.2, β=0.8, δ=0.1,
                             resample=length(population_state.population),
                             kwargs...)
 
@@ -281,6 +242,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             resample_population!(population, u, δ)
 
+            Σ_jump = estimate_jump_covariance(population, β)
             ϵ = update_epsilon(u, v)
             n_accept = 0
         end
@@ -319,7 +281,6 @@ end
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
-- `eps_init`: Initial epsilon.
 - `v=1.2`: Tuning parameter for XXX
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
@@ -331,7 +292,6 @@ end
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              eps_init,
               resample = n_particles,
               v=1.2, β=0.8, δ=0.1,
               kwargs...)
@@ -344,7 +304,6 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      eps_init = eps_init,
                                       v=v, β=β,
                                       kwargs...)
 
