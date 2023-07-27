@@ -77,3 +77,30 @@ end
 @testset "Distance transformation" begin
     # TOOO
 end
+
+@testset "Parallization" begin
+    using Base.Threads: nthreads, @threads, @spawn
+    using Base.Iterators: partition
+    using Ranges
+
+    tasks_per_thread = 2
+    chunk_size = max(1, length(some_data) ÷ (tasks_per_thread * nthreads()))
+    data_chunks = partition(some_data, chunk_size)
+    f(i) = (sleep(0.001); i);
+    tasks = map(data_chunks) do chunk
+        # Each chunk of your data gets its own spawned task that does its own local, sequential work
+        # and then returns the result
+        @spawn begin
+            state = 0
+            for x in chunk
+                state += f(x)
+            end
+            return state
+        end
+    end
+    states = fetch.(tasks) # get all the values returned by the individual tasks. fetch is type
+                           # unstable, so you may optionally want to assert a specific return type.
+    
+    @test states[1] == 1275 
+    print(states)
+end
