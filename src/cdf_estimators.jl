@@ -41,33 +41,24 @@ end
 
 
 # -----------
-# 1-dim
-
+# n-dim
 
 
 """
-Construct the empirical cdf from a multidimensional data
+Construct the empirical cdf for each summary statistics
 
-It assumes every columns `x` coresponds to an sample.
+It assumes every row `x` corresponds to a sample.
 
-Returns a function
+Returns a function, that applies the corresponding cdf to each statistics.
 """
 function build_cdf(x::Array{T, 2} where T)
-    function(z)
-        n, d = size(x)
-        length(z) == d || error("Expect an input vector of length $(d)!")
-        count = 0
-        for i in 1:n
-            k = 1
-            # check each if in all dimensions z <= x
-            for j in 1:d
-                if x[i,j] > z[j]
-                    k = 0
-                    break
-                end
-            end
-            count += k
-        end
-        count / n
+    # build 1d cdfs
+    cdfs = [build_cdf(xi) for xi in eachcol(x)]
+
+    # construct function
+    function f(ρ)
+        [cdfs[i](ρ[i]) for i in 1:length(ρ)]
     end
+
+    return f
 end

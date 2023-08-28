@@ -24,8 +24,8 @@ export sabc, update_population!
 Holds states of algorithm
 """
 mutable struct SABCstate
-    ϵ::Float64
-    cdf_dist_prior              # function G in Albert et al.
+    ϵ::Vector{Float64}
+    cdfs_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
     n_accept::Int               # number of accepted updates
@@ -40,7 +40,7 @@ Holds results
 """
 struct SABCresult{T, S}
     population::Vector{T}
-    u::Vector{S}
+    u::Array{S}
     state::SABCstate
 end
 
@@ -54,7 +54,7 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "Approximate posterior sample with $n_particles particles:")
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - average transformed distance: $mean_u")
-    println(io, "  - ϵ: $(round(s.state.ϵ, sigdigits=4))")
+    println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
     println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
 end
@@ -83,11 +83,11 @@ Resample population
 """
 function resample_population!(population, u, δ)
     n = length(population)
-    w = exp.(-u .* δ ./ mean(u))
+    w = exp.(-u .* δ ./ mean(u)) # < BUG! How to compute the weights from multible u?
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
     permute!(population, idx_resampled)
-    permute!(u, idx_resampled)
+    permute!(u, idx_resampled)  # < BUG? How to resample a matrix inplace?
 
 end
 
@@ -163,25 +163,28 @@ function initialization(f_dist, prior::Distribution, args...;
     ## estimate cdf of ρ under the prior
     any(distances_prior .< 0) && error("Negative distances are not allowed!")
 
-    cdf_dist_prior = build_cdf(distances_prior)
+    cdfs_dist_prior = build_cdf(distances_prior)
 
-    u = [cdf_dist_prior(ρ) for ρ in eachrow(distances_prior)]
+    u = similar(distances_prior)
+    for i in 1:n_particles
+        u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
+    end
 
+    ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-    ϵ = update_epsilon(u, v)
     Σ_jump = estimate_jump_covariance(population, β)
 
     # collect all parameters and states of the algorithm
     n_simulation = n_particles + 1
     state = SABCstate(ϵ,
-                      cdf_dist_prior,
+                      cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
                       0)
 
-    @info "Population with $n_particles particles initialised."
+         @info "Population with $n_particles particles initialised."
 
-    return SABCresult(population, u, state)
+         return SABCresult(population, u, state)
 
 end
 
@@ -202,7 +205,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             kwargs...)
 
     @unpack population, u, state = population_state
-    @unpack ϵ, n_accept, Σ_jump, cdf_dist_prior = state
+    @unpack ϵ, n_accept, Σ_jump, cdfs_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -223,15 +226,16 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                u_proposal = cdf_dist_prior(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) * exp((u[i] - u_proposal) / ϵ)
+                u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                    exp(sum((u[i] .- u_proposal) ./ ϵ))
             else
                 accept_prob = 0.0
             end
 
             if rand() < accept_prob
                 population[i] = θproposal
-                u[i] = u_proposal # transformed distances
+                u[i,:] .= u_proposal # transformed distances
                 n_accept += 1
                 counter_accept += 1
             end
@@ -240,17 +244,18 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
-        ϵ = update_epsilon(u, v)
+        ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        ## -- resample
-        if resample - mod(n_accept, resample) <= counter_accept
+        ## -- resample\
+        ## BUG!!!!
+        # if resample - mod(n_accept, resample) <= counter_accept
 
-            resample_population!(population, u, δ)
+        #     resample_population!(population, u, δ)
 
-            Σ_jump = estimate_jump_covariance(population, β)
-            ϵ = update_epsilon(u, v)
+        #     Σ_jump = estimate_jump_covariance(population, β)
+        #     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        end
+        # end
 
         # update progressbar
         ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))

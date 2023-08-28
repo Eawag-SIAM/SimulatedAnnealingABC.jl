@@ -97,7 +97,7 @@ end
         res = sabc(f_dist, prior, y_obs;
                    n_particles = 1000, n_simulation = 10_000);
 
-        @test res.state.ϵ < 1
+        @test all(res.state.ϵ .< 1)
 
     end
 end
