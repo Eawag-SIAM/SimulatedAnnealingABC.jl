@@ -81,14 +81,18 @@ end
 Resample population
 
 """
-function resample_population!(population, u, δ)
+function resample_population(population, u, δ)
+
     n = length(population)
-    w = exp.(-u .* δ ./ mean(u)) # < BUG! How to compute the weights from multible u?
+    u_means = mean(u, dims=1)
+    w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
+
     idx_resampled = sample(1:n, weights(w), n, replace=true)
 
-    permute!(population, idx_resampled)
-    permute!(u, idx_resampled)  # < BUG? How to resample a matrix inplace?
+    population = population[idx_resampled]
+    u = u[idx_resampled,:]
 
+    population, u
 end
 
 
@@ -204,14 +208,17 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             resample=length(population_state.population),
                             kwargs...)
 
-    @unpack population, u, state = population_state
+    state = population_state.state
+    population = copy(population_state.population)
+    u = copy(population_state.u)
+
     @unpack ϵ, n_accept, Σ_jump, cdfs_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
 
     n_updates = (n_simulation ÷ n_particles) * n_particles # number of calls to `f_dist`
 
-    progbar = ProgressMeter.Progress(n_updates, desc="Updating...", dt=0.5)
+    progbar = ProgressMeter.Progress(n_updates, desc="Updating population...", dt=0.5)
     show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
 
     for _ in 1:(n_simulation ÷ n_particles)
@@ -246,16 +253,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
         ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        ## -- resample\
-        ## BUG!!!!
-        # if resample - mod(n_accept, resample) <= counter_accept
+        ## -- resample
+        if resample - mod(n_accept, resample) <= counter_accept
+            population, u = resample_population(population, u, δ)
 
-        #     resample_population!(population, u, δ)
+            Σ_jump = estimate_jump_covariance(population, β)
+            ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        #     Σ_jump = estimate_jump_covariance(population, β)
-        #     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
-
-        # end
+        end
 
         # update progressbar
         ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
@@ -266,6 +271,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
+    population_state.population .= population
+    population_state.u .= u
 
     @info "All particles have been updated $(n_simulation ÷ n_particles) times."
     return population_state

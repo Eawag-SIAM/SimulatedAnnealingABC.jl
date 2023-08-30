@@ -9,14 +9,6 @@ using Interpolations: interpolate, extrapolate,
 # -----------
 # 1-dim
 
-# """
-# Estimate the cdf of data `x`.
-# Returns a function.
-# """
-# function build_cdf(x::AbstractVector)
-#     StatsBase.ecdf(x)
-# end
-
 
 """
 Estimate the empirical cdf of data `x`
