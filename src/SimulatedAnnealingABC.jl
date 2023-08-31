@@ -186,9 +186,9 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0)
 
-         @info "Population with $n_particles particles initialised."
+    @info "Population with $n_particles particles initialised."
 
-         return SABCresult(population, u, state)
+    return SABCresult(population, u, state)
 
 end
 
