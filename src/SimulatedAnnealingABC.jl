@@ -216,12 +216,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     dim_par = length(first(population))
     n_particles = length(population)
 
-    n_updates = (n_simulation ÷ n_particles) * n_particles # number of calls to `f_dist`
-
-    progbar = ProgressMeter.Progress(n_updates, desc="Updating population...", dt=0.5)
+    n_population_updates = n_simulation ÷ n_particles
+    n_updates = n_population_updates * n_particles # number of calls to `f_dist`
+    progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
     show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
 
-    for _ in 1:(n_simulation ÷ n_particles)
+    for _ in 1:n_population_updates
 
         counter_accept = 0
 
