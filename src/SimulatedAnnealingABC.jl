@@ -12,6 +12,8 @@ using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 import ProgressMeter
 
+using Dates
+
 include("cdf_estimators.jl")
 
 export sabc, update_population!
@@ -25,6 +27,7 @@ Holds states of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}
+    ϵ_history::Vector{Vector{Float64}}
     cdfs_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
@@ -57,6 +60,7 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
     println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
+    println(io, "The history of ϵ can be accessed with the field `state.ϵ_history`.")
 end
 
 
@@ -175,18 +179,21 @@ function initialization(f_dist, prior::Distribution, args...;
     end
 
     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
+    ϵ_history = [ϵ]
 
     Σ_jump = estimate_jump_covariance(population, β)
 
     # collect all parameters and states of the algorithm
     n_simulation = n_particles + 1
     state = SABCstate(ϵ,
+                      ϵ_history,
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
                       0)
 
     @info "Population with $n_particles particles initialised."
+    @info "Initial ϵ = $ϵ"
 
     return SABCresult(population, u, state)
 
@@ -206,13 +213,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
                             resample=length(population_state.population),
+                            checkpoint_epsilon = 1,
                             kwargs...)
 
     state = population_state.state
     population = copy(population_state.population)
     u = copy(population_state.u)
 
-    @unpack ϵ, n_accept, Σ_jump, cdfs_dist_prior = state
+    @unpack ϵ, ϵ_history, n_accept, Σ_jump, cdfs_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -220,8 +228,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_updates = n_population_updates * n_particles # number of calls to `f_dist`
     progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
     show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
+    last_checkpoint_epsilon = 0
 
-    for _ in 1:n_population_updates
+    @info "$(Dates.now())  Starting population updates."
+    for ix in 1:n_population_updates
 
         counter_accept = 0
 
@@ -264,17 +274,29 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         # update progressbar
         ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
+
+        # update ϵ_history
+        if ix%checkpoint_epsilon == 0
+            push!(ϵ_history, ϵ)
+            last_checkpoint_epsilon = ix
+        end
+
+    end
+
+    if last_checkpoint_epsilon != n_population_updates
+        push!(ϵ_history, ϵ)
     end
 
     # update state
     state.ϵ = ϵ
+    state.ϵ_history = ϵ_history
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
     population_state.population .= population
     population_state.u .= u
 
-    @info "All particles have been updated $(n_simulation ÷ n_particles) times."
+    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."
     return population_state
 
 end
@@ -311,6 +333,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               resample = n_particles,
               v=1.2, β=0.8, δ=0.1,
+              checkpoint_epsilon = 1,
               kwargs...)
 
 
@@ -332,7 +355,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ, resample=resample, kwargs...)
+                       v=v, β=β, δ=δ, checkpoint_epsilon = checkpoint_epsilon, 
+                       resample=resample, kwargs...)
 
 
     return population_state
