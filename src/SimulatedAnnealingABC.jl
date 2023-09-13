@@ -135,7 +135,7 @@ See docs for `sabc`.
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v, β, kwargs...)
+                        v, β, δ, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -177,6 +177,9 @@ function initialization(f_dist, prior::Distribution, args...;
     for i in 1:n_particles
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
+
+    ## resampling
+    population, u = resample_population(population, u, δ)
 
     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
     ϵ_history = [ϵ]
@@ -344,7 +347,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β,
+                                      v=v, β=β, δ=δ,
                                       kwargs...)
 
     ## --------------
