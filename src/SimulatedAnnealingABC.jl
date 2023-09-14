@@ -229,10 +229,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     dim_par = length(first(population))
     n_particles = length(population)
 
-    println("****************************************")
-    println("resample:", resample)
-    println("****************************************")
-
     n_population_updates = n_simulation ÷ n_particles
     n_updates = n_population_updates * n_particles # number of calls to `f_dist`
     progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
@@ -242,7 +238,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     @info "$(Dates.now()) -- Starting population updates."
     for ix in 1:n_population_updates
 
-        counter_accept = 0  # number of accepted moves in this particular population update
+        # counter_accept = 0  # number of accepted moves in this particular population update
 
         ## -- update all particles (this can be multithreaded)
         for i in eachindex(population)
@@ -263,9 +259,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i,:] .= u_proposal  # transformed distances
                 n_accept += 1
-                counter_accept += 1
-                # NOTE: at the end of the first population update, n_accept = counter_accept
-                #       then counter_accept is reset to zero, n_accept keeps growing
+                # counter_accept += 1
             end
 
         end
@@ -274,10 +268,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
         ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        println("*********************************************************")
-        println("total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
-        println("*********************************************************")
-        ## -- resample
+        ## -- resample OLD
         #= if resample - mod(n_accept, resample) <= counter_accept
             println("*********************************************************")
             println("resampling, total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
@@ -289,10 +280,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         end =#
         
+        ## -- resample
         if n_accept >= (n_resampling + 1) * resample
-            println("---------------------------------------------------------")
-            println("resampling, total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
-            println("---------------------------------------------------------")
+        
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
