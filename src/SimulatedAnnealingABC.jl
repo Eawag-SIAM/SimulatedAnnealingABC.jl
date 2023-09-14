@@ -32,6 +32,7 @@ mutable struct SABCstate
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
     n_accept::Int               # number of accepted updates
+    n_resampling::Int           # number of population resamplings
 end
 
 """
@@ -58,6 +59,7 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - average transformed distance: $mean_u")
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
+    println(io, "  - population resampling: $(s.state.n_resampling)")
     println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
     println(io, "The history of ϵ can be accessed with the field `state.ϵ_history`.")
@@ -74,7 +76,7 @@ Solve for ϵ
 
 See eq(31)
 """
- function update_epsilon(u, v)
+function update_epsilon(u, v)
      mean_u = mean(u)
      ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
      ϵ_new
@@ -182,7 +184,7 @@ function initialization(f_dist, prior::Distribution, args...;
     population, u = resample_population(population, u, δ)
 
     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
-    ϵ_history = [ϵ]
+    ϵ_history = [ϵ]  # store epsilon values
 
     Σ_jump = estimate_jump_covariance(population, β)
 
@@ -193,7 +195,7 @@ function initialization(f_dist, prior::Distribution, args...;
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
-                      0)
+                      0, 0)  # n_accept and n_resampling are set to zero
 
     @info "Population with $n_particles particles initialised."
     @info "Initial ϵ = $ϵ"
@@ -215,7 +217,7 @@ See `sabc`
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
-                            resample=length(population_state.population),
+                            resample=2*length(population_state.population),
                             checkpoint_epsilon = 1,
                             kwargs...)
 
@@ -223,20 +225,24 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population = copy(population_state.population)
     u = copy(population_state.u)
 
-    @unpack ϵ, ϵ_history, n_accept, Σ_jump, cdfs_dist_prior = state
+    @unpack ϵ, ϵ_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
     dim_par = length(first(population))
     n_particles = length(population)
+
+    println("****************************************")
+    println("resample:", resample)
+    println("****************************************")
 
     n_population_updates = n_simulation ÷ n_particles
     n_updates = n_population_updates * n_particles # number of calls to `f_dist`
     progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
     show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
-    last_checkpoint_epsilon = 0
+    last_checkpoint_epsilon = 0 
 
-    @info "$(Dates.now())  Starting population updates."
+    @info "$(Dates.now()) -- Starting population updates."
     for ix in 1:n_population_updates
 
-        counter_accept = 0
+        counter_accept = 0  # number of accepted moves in this particular population update
 
         ## -- update all particles (this can be multithreaded)
         for i in eachindex(population)
@@ -255,9 +261,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             if rand() < accept_prob
                 population[i] = θproposal
-                u[i,:] .= u_proposal # transformed distances
+                u[i,:] .= u_proposal  # transformed distances
                 n_accept += 1
                 counter_accept += 1
+                # NOTE: at the end of the first population update, n_accept = counter_accept
+                #       then counter_accept is reset to zero, n_accept keeps growing
             end
 
         end
@@ -266,15 +274,34 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
         ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
+        println("*********************************************************")
+        println("total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
+        println("*********************************************************")
         ## -- resample
-        if resample - mod(n_accept, resample) <= counter_accept
+        #= if resample - mod(n_accept, resample) <= counter_accept
+            println("*********************************************************")
+            println("resampling, total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
+            println("*********************************************************")
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
             ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        end
+        end =#
+        
+        if n_accept >= (n_resampling + 1) * resample
+            println("---------------------------------------------------------")
+            println("resampling, total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
+            println("---------------------------------------------------------")
+            population, u = resample_population(population, u, δ)
 
+            Σ_jump = estimate_jump_covariance(population, β)
+            ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
+
+            n_resampling += 1
+
+        end 
+       
         # update progressbar
         ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
 
@@ -296,6 +323,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
+    state.n_resampling = n_resampling
     population_state.population .= population
     population_state.u .= u
 
@@ -334,7 +362,7 @@ end
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              resample = n_particles,
+              resample = 2*n_particles,
               v=1.2, β=0.8, δ=0.1,
               checkpoint_epsilon = 1,
               kwargs...)

@@ -45,9 +45,12 @@ Returns a function, that applies the corresponding cdf to each statistics.
 """
 function build_cdf(x::Array{T, 2} where T)
     # build 1d cdfs
+    # NOTE: x is the 'distances_prior' (n_particles x n_stats) matrix
+    #       eachcol(x) selects all distances (for all particles) for one given stat
+    #       'build_cdf' constructs cdf functions for each summary stat
     cdfs = [build_cdf(xi) for xi in eachcol(x)]
 
-    # construct function
+    # construct and return function
     function f(ρ)
         [cdfs[i](ρ[i]) for i in 1:length(ρ)]
     end
