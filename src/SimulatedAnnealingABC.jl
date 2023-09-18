@@ -268,11 +268,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
         ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
 
-        ## -- resample OLD
+        ## -- resample FIRST VERSION -> to be deleted if we agree on the second one
         #= if resample - mod(n_accept, resample) <= counter_accept
-            println("*********************************************************")
-            println("resampling, total accepted particles = ", n_accept, " -- accepted in this update round: ", counter_accept)
-            println("*********************************************************")
+            
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
@@ -280,7 +278,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         end =#
         
-        ## -- resample
+        ## -- resample SECOND VERSION
         if n_accept >= (n_resampling + 1) * resample
         
             population, u = resample_population(population, u, δ)
@@ -352,7 +350,7 @@ end
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              resample = 2*n_particles,
+              resample = n_particles,
               v=1.2, β=0.8, δ=0.1,
               checkpoint_epsilon = 1,
               kwargs...)
@@ -365,7 +363,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ,
+                                      v=v, β=β, δ=0.01,
                                       kwargs...)
 
     ## --------------
