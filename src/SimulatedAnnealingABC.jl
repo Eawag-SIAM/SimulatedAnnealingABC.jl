@@ -250,7 +250,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             if pdf(prior, θproposal) > 0
                 u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i] .- u_proposal) ./ ϵ))
+                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
             else
                 accept_prob = 0.0
             end
