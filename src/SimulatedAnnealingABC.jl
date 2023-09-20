@@ -241,8 +241,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     @info "$(Dates.now()) -- Starting population updates."
     for ix in 1:n_population_updates
 
-        # counter_accept = 0  # number of accepted moves in this particular population update
-
         ## -- update all particles (this can be multithreaded)
         for i in eachindex(population)
 
@@ -262,7 +260,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i,:] .= u_proposal  # transformed distances
                 n_accept += 1
-                # counter_accept += 1
             end
 
         end
@@ -270,18 +267,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
         ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
-
-        ## -- resample FIRST VERSION -> to be deleted if we agree on the second one
-        #= if resample - mod(n_accept, resample) <= counter_accept
-            
-            population, u = resample_population(population, u, δ)
-
-            Σ_jump = estimate_jump_covariance(population, β)
-            ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
-
-        end =#
         
-        ## -- resample SECOND VERSION
+        ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
         
             population, u = resample_population(population, u, δ)
