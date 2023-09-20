@@ -49,6 +49,9 @@ struct SABCresult{T, S}
 end
 
 # Functions for pretty printing
+# Requires 'import Base.show'
+# Defines a new 'show' method for object of type 'SABCresult'
+# Prints output when function 'sabc' returns 'SABCresult'
 function show(io::Base.IO, s::SABCresult)
     n_particles = length(s.population)
     mean_u = round(mean(s.u), sigdigits = 4)
@@ -217,7 +220,7 @@ See `sabc`
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
-                            resample=2*length(population_state.population),
+                            resample=length(population_state.population),
                             checkpoint_epsilon = 1,
                             kwargs...)
 
@@ -363,7 +366,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=0.01,
+                                      v=v, β=β, δ=δ,
                                       kwargs...)
 
     ## --------------
