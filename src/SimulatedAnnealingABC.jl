@@ -266,7 +266,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
-        ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
+        ## -- force epsilon to decrease monotonically -> we accept the new one only if 'new <= old'
+        ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]
+        ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
         
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
@@ -274,7 +276,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
-            ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
+            ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]
+            ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
             n_resampling += 1
 

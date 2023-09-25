@@ -72,7 +72,7 @@ end
 # --- Prior ---
 prior = product_distribution(Uniform(-10,20), Uniform(0., 30))
 
-nsim = 300_000
+nsim = 20_000
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps, prior; n_particles = 1000, n_simulation = nsim)
 # --- Run for multiple distances ---
@@ -145,7 +145,7 @@ end
 # --- Prior ---
 prior = product_distribution(Uniform(-10,20), Uniform(0., 30))
 
-nsim = 300_000
+nsim = 20_000
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_withmedian, prior; n_particles = 1000, n_simulation = nsim)
 # --- Run for multiple distances ---
