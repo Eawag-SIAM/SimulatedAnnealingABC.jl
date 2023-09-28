@@ -160,7 +160,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Build prior sample
 
     for i in 1:n_particles
-        # sample
+        ## sample
         θ = rand(prior)
         ρ = f_dist(θ, args...; kwargs...)
 
@@ -183,16 +183,21 @@ function initialization(f_dist, prior::Distribution, args...;
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
 
-    ## resampling
+    ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
-
+    ## now, intial epsilon
     ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
-    ϵ_history = [ϵ]  # store epsilon values
+    ## store it
+    ϵ_history = [ϵ]
+    ## other options, mostly for development purposes:
+    # ϵ_history = [(mean.(eachcol(u)))./ϵ]  # store mean(u)/epsilon ratio
+    # ϵ_history = [(mean.(eachcol(u)))]     # store mean(u)
 
     Σ_jump = estimate_jump_covariance(population, β)
 
-    # collect all parameters and states of the algorithm
-    n_simulation = n_particles + 1
+    ## collect all parameters and states of the algorithm
+    n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
+                                # and neglect the first call to f_dist ('initialization of containers')  
     state = SABCstate(ϵ,
                       ϵ_history,
                       cdfs_dist_prior,
@@ -269,7 +274,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- force epsilon to decrease monotonically -> we accept the new one only if 'new <= old'
         ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]
         ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
-        
+
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
         
@@ -289,16 +294,23 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # update ϵ_history
         if ix%checkpoint_epsilon == 0
             push!(ϵ_history, ϵ)
+            ## other options, mostly for development purposes:
+            # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
+            # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
             last_checkpoint_epsilon = ix
         end
 
     end
 
+    ## store the last epsilon value, if not already done
     if last_checkpoint_epsilon != n_population_updates
         push!(ϵ_history, ϵ)
+        ## other options, mostly for development purposes:
+        # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
+        # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
     end
 
-    # update state
+    ## update state
     state.ϵ = ϵ
     state.ϵ_history = ϵ_history
     state.Σ_jump = Σ_jump
