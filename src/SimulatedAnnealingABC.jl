@@ -13,6 +13,7 @@ import Roots
 import ProgressMeter
 
 using Dates
+using FLoops
 
 include("cdf_estimators.jl")
 
@@ -28,6 +29,11 @@ Holds states of algorithm
 mutable struct SABCstate
     ϵ::Vector{Float64}
     ϵ_history::Vector{Vector{Float64}}
+    #########################################################
+    # Introducing a container for ρ and u history. Used for development, can be deleted later 
+    ρ_history::Vector{Vector{Float64}}
+    u_history::Vector{Vector{Float64}}
+    #########################################################
     cdfs_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
@@ -45,6 +51,10 @@ Holds results
 struct SABCresult{T, S}
     population::Vector{T}
     u::Array{S}
+    #########################################################
+    # Introducing a container for ρ. Used for development, can be deleted later 
+    ρ::Array{S}
+    #########################################################
     state::SABCstate
 end
 
@@ -79,11 +89,28 @@ Solve for ϵ
 
 See eq(31)
 """
+###### OLD version, works well with single epsilon, not suitable for multi epsilon ######
 function update_epsilon(u, v)
      mean_u = mean(u)
      ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
      ϵ_new
 end
+###### ########################################### ######
+###### ########################################### ######
+###### NEW version, should work for multiple epsilons, using old rule for single epsilon ######
+function new_update_epsilon(u, v, n)
+    mean_u = mean(u)
+    if n > 1
+        α2 = v * (2*n-1) * (n-1)^2 * factorial(2*n+2) / (n * (2*n^2-4*n+1) * factorial(n+1) * factorial(n+2))
+        ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/(1+v/(sqrt(α2)*n))
+    elseif n == 1
+        ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
+    else 
+        error("Inconsistency - number of statistics = $n should be >= 1")
+    end
+    ϵ_new
+end
+###### ############################################## ######
 
 
 """
@@ -149,12 +176,11 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Initialize containers
 
     θ = rand(prior)
-    ρ = f_dist(θ, args...; kwargs...)
-    n_stats = length(ρ)
+    ρinit = f_dist(θ, args...; kwargs...)
+    n_stats = length(ρinit)
 
     population = Vector{typeof(θ)}(undef, n_particles)
-    distances_prior = Array{eltype(ρ)}(undef, n_particles, n_stats)
-
+    distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
 
     ## ------------------
     ## Build prior sample
@@ -162,13 +188,18 @@ function initialization(f_dist, prior::Distribution, args...;
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
-        ρ = f_dist(θ, args...; kwargs...)
+        ρinit = f_dist(θ, args...; kwargs...)
 
         ## store parameter and distances
         population[i] = θ
-        distances_prior[i,:] .= ρ
+        distances_prior[i,:] .= ρinit
     end
 
+    #########################################################
+    # Store distances. Used for development, can be deleted later 
+    ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
+    # println(ρ_history)
+    #########################################################
 
     ## ----------------------------------
     ## learn cdf and compute ϵ
@@ -183,10 +214,17 @@ function initialization(f_dist, prior::Distribution, args...;
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
 
+    ##########################################################
+    # Store transformed distances. Used for development, can be deleted later 
+    u_history = [[mean(ic) for ic in eachcol(u)]]
+    # println(u_history)
+    ##########################################################
+
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
-    ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]
+    # ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
+    ϵ = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
     ## store it
     ϵ_history = [ϵ]
     ## other options, mostly for development purposes:
@@ -200,6 +238,12 @@ function initialization(f_dist, prior::Distribution, args...;
                                 # and neglect the first call to f_dist ('initialization of containers')  
     state = SABCstate(ϵ,
                       ϵ_history,
+                      ##########################################################
+                      # Distances and transformed distances history
+                      # Used for development, can be deleted later 
+                      ρ_history,
+                      u_history,
+                      ##########################################################
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
@@ -208,7 +252,7 @@ function initialization(f_dist, prior::Distribution, args...;
     @info "Population with $n_particles particles initialised."
     @info "Initial ϵ = $ϵ"
 
-    return SABCresult(population, u, state)
+    return SABCresult(population, u, distances_prior, state)
 
 end
 
@@ -228,12 +272,18 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             resample=length(population_state.population),
                             checkpoint_epsilon = 1,
                             kwargs...)
-
+    
     state = population_state.state
     population = copy(population_state.population)
     u = copy(population_state.u)
+    ##########################################################
+    # Used for development, can be deleted later 
+    ρ = copy(population_state.ρ)
+    ##########################################################
 
-    @unpack ϵ, ϵ_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
+    n_stats = size(u,2)
+
+    @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -254,7 +304,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
+                ##########################################################
+                # Used for development, can be deleted later 
+                ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                u_proposal = cdfs_dist_prior(ρ_proposal)
+                ##########################################################
+                # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                     exp(sum((u[i,:] .- u_proposal) ./ ϵ))
             else
@@ -264,6 +319,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             if rand() < accept_prob
                 population[i] = θproposal
                 u[i,:] .= u_proposal  # transformed distances
+                ##########################################################
+                # Used for development, can be deleted later 
+                ρ[i,:] .= ρ_proposal
+                ##########################################################
                 n_accept += 1
             end
 
@@ -272,7 +331,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
         ## -- force epsilon to decrease monotonically -> we accept the new one only if 'new <= old'
-        ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]
+        # ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
+        ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
         ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
         ## -- resample 
@@ -281,7 +341,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
-            ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]
+            # ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
+            ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
             ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
             n_resampling += 1
@@ -294,6 +355,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # update ϵ_history
         if ix%checkpoint_epsilon == 0
             push!(ϵ_history, ϵ)
+            ##########################################################
+            # Used for development, can be deleted later 
+            push!(u_history, [mean(ic) for ic in eachcol(u)])
+            push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
+            # println(ρ_history)
+            ##########################################################
             ## other options, mostly for development purposes:
             # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
             # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
@@ -305,6 +372,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ## store the last epsilon value, if not already done
     if last_checkpoint_epsilon != n_population_updates
         push!(ϵ_history, ϵ)
+        ##########################################################
+        # Used for development, can be deleted later 
+        push!(u_history, [mean(ic) for ic in eachcol(u)])
+        push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
+        ##########################################################
         ## other options, mostly for development purposes:
         # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
         # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
@@ -313,6 +385,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ## update state
     state.ϵ = ϵ
     state.ϵ_history = ϵ_history
+    ##########################################################
+    # Used for development, can be deleted later 
+    state.u_history = u_history
+    state.ρ_history = ρ_history
+    ##########################################################
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
@@ -360,7 +437,6 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               checkpoint_epsilon = 1,
               kwargs...)
 
-
     ## ------------------------
     ## Initialization
     ## ------------------------
@@ -382,9 +458,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
                        v=v, β=β, δ=δ, checkpoint_epsilon = checkpoint_epsilon, 
                        resample=resample, kwargs...)
 
-
+    show(population_state)
     return population_state
 end
-
 
 end
