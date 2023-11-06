@@ -198,7 +198,6 @@ function initialization(f_dist, prior::Distribution, args...;
     #########################################################
     # Store distances. Used for development, can be deleted later 
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
-    # println(ρ_history)
     #########################################################
 
     ## ----------------------------------
@@ -217,7 +216,6 @@ function initialization(f_dist, prior::Distribution, args...;
     ##########################################################
     # Store transformed distances. Used for development, can be deleted later 
     u_history = [[mean(ic) for ic in eachcol(u)]]
-    # println(u_history)
     ##########################################################
 
     ## resampling before setting intial epsilon
@@ -227,9 +225,6 @@ function initialization(f_dist, prior::Distribution, args...;
     ϵ = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
     ## store it
     ϵ_history = [ϵ]
-    ## other options, mostly for development purposes:
-    # ϵ_history = [(mean.(eachcol(u)))./ϵ]  # store mean(u)/epsilon ratio
-    # ϵ_history = [(mean.(eachcol(u)))]     # store mean(u)
 
     Σ_jump = estimate_jump_covariance(population, β)
 
@@ -296,8 +291,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     @info "$(Dates.now()) -- Starting population updates."
     for ix in 1:n_population_updates
 
-        ## -- update all particles (this can be multithreaded)
-        for i in eachindex(population)
+        ######################################################################
+        ## -- update all particles, all stats (this can be multithreaded)
+        ######################################################################
+        #= for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
@@ -326,7 +323,44 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 n_accept += 1
             end
 
+        end =#
+        ######################################################################
+
+        ######################################################################
+        ## -- update all particles, only the largest 'u' (this can be multithreaded)
+        ######################################################################
+        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
+        for i in eachindex(population)
+
+            # proposal
+            θproposal = proposal(population[i], Σ_jump)
+
+            # acceptance probability
+            if pdf(prior, θproposal) > 0
+                ##########################################################
+                # Used for development, can be deleted later 
+                ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                u_proposal = cdfs_dist_prior(ρ_proposal)
+                ##########################################################
+                # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+            else
+                accept_prob = 0.0
+            end
+
+            if rand() < accept_prob
+                population[i] = θproposal
+                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                ##########################################################
+                # Used for development, can be deleted later 
+                ρ[i,index_max_u] = ρ_proposal[index_max_u]
+                ##########################################################
+                n_accept += 1
+            end
+
         end
+        ######################################################################
 
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
@@ -359,11 +393,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # Used for development, can be deleted later 
             push!(u_history, [mean(ic) for ic in eachcol(u)])
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
-            # println(ρ_history)
             ##########################################################
-            ## other options, mostly for development purposes:
-            # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
-            # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
             last_checkpoint_epsilon = ix
         end
 
@@ -377,9 +407,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         push!(u_history, [mean(ic) for ic in eachcol(u)])
         push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
         ##########################################################
-        ## other options, mostly for development purposes:
-        # push!(ϵ_history, (mean.(eachcol(u)))./ϵ)  # store mean(u)/epsilon ratio
-        # push!(ϵ_history, mean.(eachcol(u)))       # store mean(u)
     end
 
     ## update state

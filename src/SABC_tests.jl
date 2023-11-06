@@ -116,7 +116,7 @@ display(plot(P_scatter_1, P_scatter_2, layout = (1, 2), aspect_ratio = :equal))
 ########################################################################################
 
 
-nsim = 2_000_000  # total number of particle updates
+nsim = 4_000_000  # total number of particle updates
 
 """
 -----------------------------------------------------------------
