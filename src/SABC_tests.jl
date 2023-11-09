@@ -1,33 +1,5 @@
-import Pkg
-# Activate environment. 
-Pkg.activate("SABC") 
 
-#= Current environment is visible in Pkg REPL (type']' to activate Pkg REPL)
-In Pkg REPL (activated with ']') do:
-'add ...path to.../SimulatedAnnealingABC.jl' 
-to have the local package installed
-OR (after loading Revise)
-'dev ...path to.../SimulatedAnnealingABC.jl' to develop package =#
 
-#= To add dependencies:
-pkg> activate /Users/ulzg/SABC/SimulatedAnnealingABC.jl
-pkg> add PkgName =#
-                   
-using Revise
-using Random
-using Distributions
-using Statistics
-using SimulatedAnnealingABC
-using Plots
-using BenchmarkTools
-using CSV 
-using DataFrames
-using FFTW
-using Distances
-using DifferentialEquations
-using StochasticDelayDiffEq
-using SpecialFunctions
-using DelimitedFiles
 
 include("./AffineInvMCMC.jl")
 using .AffineInvMCMC
@@ -36,7 +8,6 @@ println(" ")
 println("---- ------------------------------ ----")
 println("---- 1d Normal - Infer mean and std ----")
 println("---- ------------------------------ ----")
-
 
 """
 -----------------------------------------------------------------
@@ -116,7 +87,8 @@ display(plot(P_scatter_1, P_scatter_2, layout = (1, 2), aspect_ratio = :equal))
 ########################################################################################
 
 
-nsim = 4_000_000  # total number of particle updates
+nsim = 5_000_000  # total number of particle updates 
+# N.B.: for NLAR1, 'nsim' is re-defined below
 
 """
 -----------------------------------------------------------------
@@ -212,8 +184,8 @@ for ix in 1:num_traj
 	writedlm("/Users/ulzg/SABC/output/multi_trajectory_test/epsilon_history_" * fname_multeps * "_" * string(ix) * ".csv", eps_multeps[ix], ',')
 	writedlm("/Users/ulzg/SABC/output/multi_trajectory_test/rho_history_" * fname_multeps * "_" * string(ix) * ".csv", rho_multeps[ix], ',')
 	writedlm("/Users/ulzg/SABC/output/multi_trajectory_test/u_history_" * fname_multeps * "_" * string(ix) * ".csv", u_multeps[ix], ',')
-end =#
-
+end
+ =#
 ##################################################################
 
 ##################################################################
@@ -222,8 +194,19 @@ end =#
 #################################################################
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps, prior; n_particles = 1000, n_simulation = nsim, v = 1.2)
+asa = now() 
+for ix in 1:5
+	out_singeps = sabc(f_dist_euclidean_singeps, prior; n_particles = 1000, n_simulation = nsim, v = 1.2)
+end
+fasa = now()
+
+println(fasa-asa)
+
+out_singeps = sabc(f_dist_euclidean_singeps, prior; n_particles = 1000, n_simulation = nsim, v = 1.2)
+display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps, prior; n_particles = 1000, n_simulation = nsim, v = 1.2)
+out_multeps = sabc(f_dist_euclidean_multeps, prior; n_particles = 1000, n_simulation = nsim, v = 15)
+display(out_multeps)
 
 pop_singeps = hcat(out_singeps.population...)
 eps_singeps = hcat(out_singeps.state.ϵ_history...)
@@ -240,8 +223,8 @@ u_multeps = hcat(out_multeps.state.u_history...)
 ### Run this!
 #################################################################
 #= 
-fname_singeps = "test_normal_2stats_singeps_100samples_seed1113"
-fname_multeps = "test_normal_2stats_multeps_100samples_seed1113"
+fname_singeps = "test_normal_2stats_singeps_100samples_seed1822"
+fname_multeps = "test_normal_2stats_multeps_100samples_seed1822"
 
 writedlm("/Users/ulzg/SABC/output/post_population_" * fname_singeps * ".csv", pop_singeps, ',') 
 writedlm("/Users/ulzg/SABC/output/epsilon_history_" * fname_singeps * ".csv", eps_singeps, ',')
@@ -252,7 +235,7 @@ writedlm("/Users/ulzg/SABC/output/post_population_" * fname_multeps * ".csv", po
 writedlm("/Users/ulzg/SABC/output/epsilon_history_" * fname_multeps * ".csv", eps_multeps, ',')
 writedlm("/Users/ulzg/SABC/output/rho_history_" * fname_multeps * ".csv", rho_multeps, ',')
 writedlm("/Users/ulzg/SABC/output/u_history_" * fname_multeps * ".csv", u_multeps, ',')
-=#
+ =#
 
 # --- Plot histograms ---
 P_hist_mu = histogram(title = "1d Normal - mean - 2 stats")
@@ -331,8 +314,10 @@ end
 
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_withmedian, prior; n_particles = 1000, n_simulation = nsim)
+display(out_singeps)
 # --- Run for multiple distances ---
 out_multeps = sabc(f_dist_euclidean_multeps_withmedian, prior; n_particles = 1000, n_simulation = nsim)
+display(out_multeps)
 
 # --- Extract populations and epsilons ---
 pop_singeps = hcat(out_singeps.population...)
@@ -418,8 +403,11 @@ end
 
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_withnoise, prior; n_particles = 1000, n_simulation = nsim)
+out_multeps = sabc(f_dist_euclidean_multeps_withnoise, prior; n_particles = 1000, n_simulation = nsim)
+display(out_singeps)
 # --- Run for multiple distances ---
 out_multeps = sabc(f_dist_euclidean_multeps_withnoise, prior; n_particles = 1000, n_simulation = nsim)
+display(out_multeps)
 
 # --- Extract populations and epsilons ---
 pop_singeps = hcat(out_singeps.population...)
@@ -577,8 +565,10 @@ end
 
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_3stats, prior; n_particles = 1000, n_simulation = nsim)
+display(out_singeps)
 # --- Run for multiple distances ---
 out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim)
+display(out_multeps)
 
 # --- Extract populations and epsilons ---
 pop_singeps = hcat(out_singeps.population...)
@@ -684,8 +674,10 @@ end
 
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_3stats, prior; n_particles = 1000, n_simulation = nsim)
+display(out_singeps)
 # --- Run for multiple distances ---
 out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim)
+display(out_multeps)
 
 # --- Extract populations and epsilons ---
 pop_singeps = hcat(out_singeps.population...)

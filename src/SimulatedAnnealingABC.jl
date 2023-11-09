@@ -14,6 +14,7 @@ import ProgressMeter
 
 using Dates
 using FLoops
+using FoldsThreads
 
 include("cdf_estimators.jl")
 
@@ -172,7 +173,9 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    ## ------------------------
+        @info "Using threads: $(Threads.nthreads())."
+    
+        ## ------------------------
     ## Initialize containers
 
     θ = rand(prior)
@@ -279,6 +282,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_stats = size(u,2)
 
     @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
+    
+    # Create References for @floop
+    ref_Σ_jump = Ref(Σ_jump)
+    ref_u = Ref(u)
+    ref_ρ = Ref(ρ)
+    ref_ϵ = Ref(ϵ) 
+    ref_population = Ref(population)
+
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -292,48 +303,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     for ix in 1:n_population_updates
 
         ######################################################################
-        ## -- update all particles, all stats (this can be multithreaded)
-        ######################################################################
-        #= for i in eachindex(population)
-
-            # proposal
-            θproposal = proposal(population[i], Σ_jump)
-
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                ##########################################################
-                # Used for development, can be deleted later 
-                ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                u_proposal = cdfs_dist_prior(ρ_proposal)
-                ##########################################################
-                # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-            else
-                accept_prob = 0.0
-            end
-
-            if rand() < accept_prob
-                population[i] = θproposal
-                u[i,:] .= u_proposal  # transformed distances
-                ##########################################################
-                # Used for development, can be deleted later 
-                ρ[i,:] .= ρ_proposal
-                ##########################################################
-                n_accept += 1
-            end
-
-        end =#
-        ######################################################################
-
-        ######################################################################
         ## -- update all particles, only the largest 'u' (this can be multithreaded)
         ######################################################################
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-        for i in eachindex(population)
+        @floop for i in eachindex(population)
 
             # proposal
-            θproposal = proposal(population[i], Σ_jump)
+            θproposal = proposal(ref_population[][i], ref_Σ_jump[])
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
@@ -343,20 +319,26 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 u_proposal = cdfs_dist_prior(ρ_proposal)
                 ##########################################################
                 # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+                accept_prob = pdf(prior, θproposal) / pdf(prior, ref_population[][i]) *
+                    exp(sum((ref_u[][i,:] .- u_proposal) ./ ref_ϵ[]))
             else
                 accept_prob = 0.0
             end
 
             if rand() < accept_prob
-                population[i] = θproposal
-                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                ref_population[][i] = θproposal
+                # If updating only largest u:
+                ref_u[][i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                # If updating all stats:
+                # u[i,:] .= u_proposal  # 
                 ##########################################################
                 # Used for development, can be deleted later 
-                ρ[i,index_max_u] = ρ_proposal[index_max_u]
+                # If updating only largest u:
+                ref_ρ[][i,index_max_u] = ρ_proposal[index_max_u]
+                # If updating all stats:
+                # ρ[i,:] .= ρ_proposal
                 ##########################################################
-                n_accept += 1
+                @reduce n_accept += 1
             end
 
         end
@@ -485,7 +467,6 @@ function sabc(f_dist::Function, prior::Distribution, args...;
                        v=v, β=β, δ=δ, checkpoint_epsilon = checkpoint_epsilon, 
                        resample=resample, kwargs...)
 
-    show(population_state)
     return population_state
 end
 
