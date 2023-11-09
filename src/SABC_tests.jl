@@ -1,4 +1,33 @@
+import Pkg
+# Activate environment. 
+Pkg.activate("SABC") 
 
+#= Current environment is visible in Pkg REPL (type']' to activate Pkg REPL)
+In Pkg REPL (activated with ']') do:
+'add ...path to.../SimulatedAnnealingABC.jl' 
+to have the local package installed
+OR (after loading Revise)
+'dev ...path to.../SimulatedAnnealingABC.jl' to develop package =#
+
+#= To add dependencies:
+pkg> activate /Users/ulzg/SABC/SimulatedAnnealingABC.jl
+pkg> add PkgName =#
+                   
+using Revise
+using Random
+using Distributions
+using Statistics
+using SimulatedAnnealingABC
+using Plots
+using BenchmarkTools
+using CSV 
+using DataFrames
+using FFTW
+using Distances
+using DifferentialEquations
+using StochasticDelayDiffEq
+using SpecialFunctions
+using DelimitedFiles
 
 
 include("./AffineInvMCMC.jl")
