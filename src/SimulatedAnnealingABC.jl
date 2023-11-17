@@ -21,11 +21,12 @@ include("cdf_estimators.jl")
 export sabc, update_population!
 
 
-# -----------
-# define types to hold results
+# -------------------------------------------
+# Define types to hold results
+# -------------------------------------------
 
 """
-Holds states of algorithm
+Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}
@@ -45,7 +46,7 @@ end
 """
 Holds results
 
-- `population`: vector of parameter samples from the approximative posterior
+- `population`: vector of parameter samples from the approximate posterior
 - `u`: transformed distances
 - `state`: state of algorithm
 """
@@ -59,10 +60,13 @@ struct SABCresult{T, S}
     state::SABCstate
 end
 
-# Functions for pretty printing
-# Requires 'import Base.show'
-# Defines a new 'show' method for object of type 'SABCresult'
-# Prints output when function 'sabc' returns 'SABCresult'
+"""
+Function for pretty printing
+
+Requires 'import Base.show'
+Defines a new 'show' method for object of type 'SABCresult'
+Prints output when function 'sabc' returns 'SABCresult'
+"""
 function show(io::Base.IO, s::SABCresult)
     n_particles = length(s.population)
     mean_u = round(mean(s.u), sigdigits = 4)
@@ -80,29 +84,19 @@ function show(io::Base.IO, s::SABCresult)
 end
 
 
-
-# -----------
+# -------------------------------------------
 # algorithm
-
+# -------------------------------------------
 
 """
-Solve for ϵ
-
-See eq(31)
+Update ϵ
+Single-epsilon: see eq(31)
+Multi-epsilon: "new" update rule
 """
-###### OLD version, works well with single epsilon, not suitable for multi epsilon ######
-function update_epsilon(u, v)
-     mean_u = mean(u)
-     ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
-     ϵ_new
-end
-###### ########################################### ######
-###### ########################################### ######
-###### NEW version, should work for multiple epsilons, using old rule for single epsilon ######
 function new_update_epsilon(u, v, n)
     mean_u = mean(u)
     if n > 1
-        α2 = v * (2*n-1) * (n-1)^2 * factorial(2*n+2) / (n * (2*n^2-4*n+1) * factorial(n+1) * factorial(n+2))
+        α2 = Float64(v * (2*n-1) * (n-1)^2 * factorial(big(2*n+2)) / (n * (2*n^2-4*n+1) * factorial(big(n+1)) * factorial(big(n+2))))
         ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/(1+v/(sqrt(α2)*n))
     elseif n == 1
         ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
@@ -111,12 +105,10 @@ function new_update_epsilon(u, v, n)
     end
     ϵ_new
 end
-###### ############################################## ######
 
 
 """
 Resample population
-
 """
 function resample_population(population, u, δ)
 
@@ -134,7 +126,7 @@ end
 
 
 """
-Estimate the coavariance for the jump distributions from an population
+Estimate the coavariance for the jump distributions from a population
 """
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-6*I
@@ -149,7 +141,7 @@ proposal(θ, Σ::Matrix) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
 
 
 """
-Proposal for 1-dimensions
+Proposal for 1-dimension
 """
 proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
 
@@ -220,7 +212,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # Store transformed distances. Used for development, can be deleted later 
     u_history = [[mean(ic) for ic in eachcol(u)]]
     ##########################################################
-
+    
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
@@ -283,13 +275,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
     
-    # Create References for @floop
-    ref_Σ_jump = Ref(Σ_jump)
-    ref_u = Ref(u)
-    ref_ρ = Ref(ρ)
-    ref_ϵ = Ref(ϵ) 
-    ref_population = Ref(population)
-
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -303,10 +288,63 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     for ix in 1:n_population_updates
 
         ######################################################################
-        ## -- update all particles, only the largest 'u' (this can be multithreaded)
+        ## -- update all particles, only the largest 'u' (single-threaded)
         ######################################################################
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-        @floop for i in eachindex(population)
+        for i in eachindex(population)
+
+            # proposal
+            θproposal = proposal(population[i], Σ_jump)
+
+            # acceptance probability
+            if pdf(prior, θproposal) > 0
+                ##########################################################
+                # Used for development, can be deleted later 
+                ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                u_proposal = cdfs_dist_prior(ρ_proposal)
+                ##########################################################
+                # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+            else
+                accept_prob = 0.0
+            end
+
+            if rand() < accept_prob
+                population[i] = θproposal
+                # If updating only largest u:
+                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                # If updating all stats:
+                # u[i,:] .= u_proposal  # 
+                ##########################################################
+                # Used for development, can be deleted later 
+                # If updating only largest u:
+                ρ[i,index_max_u] = ρ_proposal[index_max_u]
+                # If updating all stats:
+                # ρ[i,:] .= ρ_proposal
+                ##########################################################
+                n_accept += 1
+            end
+
+        end
+        ######################################################################
+
+        ######################################################################
+        ## -- update all particles, only the largest 'u' (multi-threaded)
+        ######################################################################
+        #= 
+        # Create References for @floop
+        ref_Σ_jump = Ref(Σ_jump)
+        ref_u = Ref(u)
+        ref_ρ = Ref(ρ)
+        ref_ϵ = Ref(ϵ) 
+        ref_population = Ref(population)
+
+        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
+
+        # Executors with strong scaling (1d-normal test): 
+        # ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
+        @floop ThreadedEx() for i in eachindex(population)
 
             # proposal
             θproposal = proposal(ref_population[][i], ref_Σ_jump[])
@@ -326,22 +364,22 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             end
 
             if rand() < accept_prob
-                ref_population[][i] = θproposal
+                population[i] = θproposal
                 # If updating only largest u:
-                ref_u[][i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
                 # If updating all stats:
                 # u[i,:] .= u_proposal  # 
                 ##########################################################
                 # Used for development, can be deleted later 
                 # If updating only largest u:
-                ref_ρ[][i,index_max_u] = ρ_proposal[index_max_u]
+                ρ[i,index_max_u] = ρ_proposal[index_max_u]
                 # If updating all stats:
                 # ρ[i,:] .= ρ_proposal
                 ##########################################################
                 @reduce n_accept += 1
             end
 
-        end
+        end =#
         ######################################################################
 
         ## -- update epsilon and jump distribution
