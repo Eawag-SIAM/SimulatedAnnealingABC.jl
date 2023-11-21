@@ -162,7 +162,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-        @info "Using threads: $(Threads.nthreads()) "
+        @info "Using threads: $(Threads.nthreads()) "; flush(stderr)
     
         ## ------------------------
     ## Initialize containers
@@ -225,8 +225,8 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0, 0)  # n_accept and n_resampling are set to zero
 
-    @info "Population with $n_particles particles initialised."
-    @info "Initial ϵ = $ϵ"
+    @info "Population with $n_particles particles initialised."; flush(stderr)
+    @info "Initial ϵ = $ϵ"; flush(stderr)
 
     return SABCresult(population, u, distances_prior, state)
 
@@ -270,7 +270,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     now = Dates.now()
     inter = 0  # to estimate ETA
-    @info "$(now) -- Starting population updates."
+    @info "$(now) -- Starting population updates."; flush(stderr)
     for ix in 1:n_population_updates
 
         ######################################################################
@@ -394,7 +394,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             hh = lpad(floor(Int, eta/3600), 2, '0')
             mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
             ss = lpad(floor(Int, eta % 60), 2, '0')
-            @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) " 
+            @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) "
+            flush(stderr) 
         end
         # ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
 
@@ -430,7 +431,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population_state.population .= population
     population_state.u .= u
 
-    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."
+    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."; flush(stderr)
     return population_state
 
 end
