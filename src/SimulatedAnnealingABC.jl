@@ -10,7 +10,7 @@ using StatsBase: mean, cov, sample, weights
 
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
-import ProgressMeter
+# import ProgressMeter
 
 using Dates
 using FLoops
@@ -30,12 +30,12 @@ Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}
+
+    # Containers to store trajectories
     ϵ_history::Vector{Vector{Float64}}
-    #########################################################
-    # Introducing a container for ρ and u history. Used for development, can be deleted later 
     ρ_history::Vector{Vector{Float64}}
     u_history::Vector{Vector{Float64}}
-    #########################################################
+
     cdfs_dist_prior              # function G in Albert et al.
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int
@@ -53,10 +53,7 @@ Holds results
 struct SABCresult{T, S}
     population::Vector{T}
     u::Array{S}
-    #########################################################
-    # Introducing a container for ρ. Used for development, can be deleted later 
     ρ::Array{S}
-    #########################################################
     state::SABCstate
 end
 
@@ -165,7 +162,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-        @info "Using threads: $(Threads.nthreads())."
+        @info "Using threads: $(Threads.nthreads()) "
     
         ## ------------------------
     ## Initialize containers
@@ -190,10 +187,7 @@ function initialization(f_dist, prior::Distribution, args...;
         distances_prior[i,:] .= ρinit
     end
 
-    #########################################################
-    # Store distances. Used for development, can be deleted later 
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
-    #########################################################
 
     ## ----------------------------------
     ## learn cdf and compute ϵ
@@ -208,15 +202,11 @@ function initialization(f_dist, prior::Distribution, args...;
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
 
-    ##########################################################
-    # Store transformed distances. Used for development, can be deleted later 
     u_history = [[mean(ic) for ic in eachcol(u)]]
-    ##########################################################
     
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
-    # ϵ = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
     ϵ = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
     ## store it
     ϵ_history = [ϵ]
@@ -228,12 +218,8 @@ function initialization(f_dist, prior::Distribution, args...;
                                 # and neglect the first call to f_dist ('initialization of containers')  
     state = SABCstate(ϵ,
                       ϵ_history,
-                      ##########################################################
-                      # Distances and transformed distances history
-                      # Used for development, can be deleted later 
                       ρ_history,
                       u_history,
-                      ##########################################################
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
@@ -260,16 +246,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
                             resample=length(population_state.population),
-                            checkpoint_epsilon = 1,
+                            checkpoint_history = 1,
+                            checkpoint_display = 100,
                             kwargs...)
     
     state = population_state.state
     population = copy(population_state.population)
     u = copy(population_state.u)
-    ##########################################################
-    # Used for development, can be deleted later 
     ρ = copy(population_state.ρ)
-    ##########################################################
 
     n_stats = size(u,2)
 
@@ -280,11 +264,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     n_population_updates = n_simulation ÷ n_particles
     n_updates = n_population_updates * n_particles # number of calls to `f_dist`
-    progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
-    show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
+    # progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
+    # show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
     last_checkpoint_epsilon = 0 
 
-    @info "$(Dates.now()) -- Starting population updates."
+    now = Dates.now()
+    inter = 0  # to estimate ETA
+    @info "$(now) -- Starting population updates."
     for ix in 1:n_population_updates
 
         ######################################################################
@@ -292,6 +278,56 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ######################################################################
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
         for i in eachindex(population)
+
+            # proposal
+            θproposal = proposal(population[i], Σ_jump)
+
+            # acceptance probability
+            if pdf(prior, θproposal) > 0
+                ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                u_proposal = cdfs_dist_prior(ρ_proposal)
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+            else
+                accept_prob = 0.0
+            end
+
+            if rand() < accept_prob
+                population[i] = θproposal
+                # If updating only largest u:
+                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
+                # If updating all stats:
+                # u[i,:] .= u_proposal  # 
+    
+                # If updating only largest u:
+                ρ[i,index_max_u] = ρ_proposal[index_max_u]
+                # If updating all stats:
+                # ρ[i,:] .= ρ_proposal
+                
+                n_accept += 1
+            end
+
+        end
+        ######################################################################
+
+        ######################################################################
+        ## -- update all particles, only the largest 'u' (multi-threaded)
+        ######################################################################
+        
+        # Create References for @floop
+        #= 
+        ref_Σ_jump = Ref(Σ_jump)
+        ref_u = Ref(u)
+        ref_ρ = Ref(ρ)
+        ref_ϵ = Ref(ϵ) 
+        ref_population = Ref(population) 
+        =#
+
+        #= index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
+
+        # Executors with strong scaling (1d-normal test): 
+        # ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
+        @floop ThreadedEx() for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
@@ -323,59 +359,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 # If updating all stats:
                 # ρ[i,:] .= ρ_proposal
                 ##########################################################
-                n_accept += 1
-            end
-
-        end
-        ######################################################################
-
-        ######################################################################
-        ## -- update all particles, only the largest 'u' (multi-threaded)
-        ######################################################################
-        #= 
-        # Create References for @floop
-        ref_Σ_jump = Ref(Σ_jump)
-        ref_u = Ref(u)
-        ref_ρ = Ref(ρ)
-        ref_ϵ = Ref(ϵ) 
-        ref_population = Ref(population)
-
-        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-
-        # Executors with strong scaling (1d-normal test): 
-        # ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-        @floop ThreadedEx() for i in eachindex(population)
-
-            # proposal
-            θproposal = proposal(ref_population[][i], ref_Σ_jump[])
-
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                ##########################################################
-                # Used for development, can be deleted later 
-                ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                u_proposal = cdfs_dist_prior(ρ_proposal)
-                ##########################################################
-                # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
-                accept_prob = pdf(prior, θproposal) / pdf(prior, ref_population[][i]) *
-                    exp(sum((ref_u[][i,:] .- u_proposal) ./ ref_ϵ[]))
-            else
-                accept_prob = 0.0
-            end
-
-            if rand() < accept_prob
-                population[i] = θproposal
-                # If updating only largest u:
-                u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
-                # If updating all stats:
-                # u[i,:] .= u_proposal  # 
-                ##########################################################
-                # Used for development, can be deleted later 
-                # If updating only largest u:
-                ρ[i,index_max_u] = ρ_proposal[index_max_u]
-                # If updating all stats:
-                # ρ[i,:] .= ρ_proposal
-                ##########################################################
                 @reduce n_accept += 1
             end
 
@@ -385,8 +368,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
         ## -- force epsilon to decrease monotonically -> we accept the new one only if 'new <= old'
-        # ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
-        ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
+        ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
         ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
         ## -- resample 
@@ -395,25 +377,32 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
-            # ϵnew = [update_epsilon(ui, v) for ui in eachcol(u)]  # OLD update rule suitable for single ϵ, NOT multi ϵ
-            ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
+            ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
             ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
             n_resampling += 1
 
         end 
        
-        # update progressbar
-        ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
+        # update progress
+        if ix%checkpoint_display == 0
+            before = now
+            now = Dates.now()
+            inter += (now-before).value*10^(-3)  # in seconds
+            update_average_time = inter / ix 
+            eta = (n_population_updates - ix) * update_average_time
+            hh = lpad(floor(Int, eta/3600), 2, '0')
+            mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
+            ss = lpad(floor(Int, eta % 60), 2, '0')
+            @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) " 
+        end
+        # ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
 
         # update ϵ_history
-        if ix%checkpoint_epsilon == 0
+        if ix%checkpoint_history == 0
             push!(ϵ_history, ϵ)
-            ##########################################################
-            # Used for development, can be deleted later 
             push!(u_history, [mean(ic) for ic in eachcol(u)])
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
-            ##########################################################
             last_checkpoint_epsilon = ix
         end
 
@@ -422,11 +411,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ## store the last epsilon value, if not already done
     if last_checkpoint_epsilon != n_population_updates
         push!(ϵ_history, ϵ)
-        ##########################################################
-        # Used for development, can be deleted later 
         push!(u_history, [mean(ic) for ic in eachcol(u)])
         push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
-        ##########################################################
     end
 
     ## update state
@@ -481,7 +467,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               resample = n_particles,
               v=1.2, β=0.8, δ=0.1,
-              checkpoint_epsilon = 1,
+              checkpoint_history = 1,
+              checkpoint_display = 100,
               kwargs...)
 
     ## ------------------------
@@ -502,7 +489,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ, checkpoint_epsilon = checkpoint_epsilon, 
+                       v=v, β=β, δ=δ, checkpoint_history = checkpoint_history, 
+                       checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
 
     return population_state
