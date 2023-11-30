@@ -226,7 +226,7 @@ end
 out_singeps = sabc(f_dist_euclidean_singeps, prior; n_particles = 1000, n_simulation = nsim, v = 1.2)
 display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps, prior; n_particles = 1000, n_simulation = nsim, v = 15)
+out_multeps = sabc(f_dist_euclidean_multeps, prior; n_particles = 1000, n_simulation = nsim, v = 20)
 display(out_multeps)
 
 pop_singeps = hcat(out_singeps.population...)
@@ -337,7 +337,7 @@ end
 out_singeps = sabc(f_dist_euclidean_singeps_withmedian, prior; n_particles = 1000, n_simulation = nsim,  v = 1.2)
 display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps_withmedian, prior; n_particles = 1000, n_simulation = nsim,  v = 15)
+out_multeps = sabc(f_dist_euclidean_multeps_withmedian, prior; n_particles = 1000, n_simulation = nsim,  v = 20)
 display(out_multeps)
 
 # --- Extract populations and epsilons ---
@@ -426,7 +426,7 @@ end
 out_singeps = sabc(f_dist_euclidean_singeps_withnoise, prior; n_particles = 1000, n_simulation = nsim,  v = 1.2)
 display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps_withnoise, prior; n_particles = 1000, n_simulation = nsim,  v = 15)
+out_multeps = sabc(f_dist_euclidean_multeps_withnoise, prior; n_particles = 1000, n_simulation = nsim,  v = 20)
 display(out_multeps)
 
 # --- Extract populations and epsilons ---
@@ -587,7 +587,7 @@ end
 out_singeps = sabc(f_dist_euclidean_singeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 1.2)
 display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 15)
+out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 20)
 display(out_multeps)
 
 # --- Extract populations and epsilons ---
@@ -696,7 +696,7 @@ end
 out_singeps = sabc(f_dist_euclidean_singeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 1.2)
 display(out_singeps)
 # --- Run for multiple distances ---
-out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 15)
+out_multeps = sabc(f_dist_euclidean_multeps_3stats, prior; n_particles = 1000, n_simulation = nsim,  v = 20)
 display(out_multeps)
 
 # --- Extract populations and epsilons ---
