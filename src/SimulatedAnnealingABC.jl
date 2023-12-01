@@ -210,7 +210,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## now, intial epsilon
     ϵ = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
     ## store it
-    ϵ_history = [ϵ]
+    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
     Σ_jump = estimate_jump_covariance(population, β)
 
@@ -296,16 +296,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             if rand() < accept_prob
                 population[i] = θproposal
-                # If updating only largest u:
-                # u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
-                # If updating all stats:
                 u[i,:] .= u_proposal  
-    
-                # If updating only largest u:
-                # ρ[i,index_max_u] = ρ_proposal[index_max_u]
-                # If updating all stats:
                 ρ[i,:] .= ρ_proposal
-                
                 n_accept += 1
             end
 
@@ -379,7 +371,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
-        
             # println("---------- resampling !!!! --------------")
             population, u = resample_population(population, u, δ)
 
@@ -408,7 +399,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         # update ϵ_history
         if ix%checkpoint_history == 0
-            push!(ϵ_history, ϵ)
+            # println("Pushing into history: ", ϵ)
+            push!(ϵ_history, copy(ϵ))  # needs copy() to avoid a sequence of constant values
+            # println("and here is the history: ", ϵ_history)
             push!(u_history, [mean(ic) for ic in eachcol(u)])
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
             last_checkpoint_epsilon = ix
@@ -421,7 +414,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     ## store the last epsilon value, if not already done
     if last_checkpoint_epsilon != n_population_updates
-        push!(ϵ_history, ϵ)
+        push!(ϵ_history, copy(ϵ))
         push!(u_history, [mean(ic) for ic in eachcol(u)])
         push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
     end
