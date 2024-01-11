@@ -338,23 +338,16 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
         ## -- update only the ϵ corresponding to the largest u
-        ## -- force epsilon to decrease monotonically -> we accept the new one only if 'new <= old'
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-        # ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
-        # println("ϵ is: ", ϵ)
-        # println("mean(u) is: ", [mean(ic) for ic in eachcol(u)])
-        ϵold = ϵ[index_max_u]
         ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
-        if ϵnew <= ϵold
-            # println("----- update! -----") 
+        # ϵold = ϵ[index_max_u]
+        #= if ϵnew <= ϵold
             ϵ[index_max_u] = ϵnew
-        end
-        # println("index max u: ", index_max_u, " - ϵold was: ", ϵold, " - updated ϵ: ", round.(ϵ, sigdigits=4))
-        # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
+        end =#
+        ϵ[index_max_u] = ϵnew
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
-            # println("---------- resampling !!!! --------------")
             population, u = resample_population(population, u, δ)
 
             Σ_jump = estimate_jump_covariance(population, β)
@@ -363,7 +356,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             ϵ = ϵnew
 
             n_resampling += 1
-
         end 
        
         # update progress
@@ -383,16 +375,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         # update ϵ_history
         if ix%checkpoint_history == 0
-            # println("Pushing into history: ", ϵ)
             push!(ϵ_history, copy(ϵ))  # needs copy() to avoid a sequence of constant values
-            # println("and here is the history: ", ϵ_history)
             push!(u_history, [mean(ic) for ic in eachcol(u)])
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
             last_checkpoint_epsilon = ix
         end
-
-        # println("---------------------------------------------------------")
-        # println("---------------------------------------------------------")
 
     end
 
