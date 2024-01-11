@@ -112,6 +112,7 @@ function resample_population(population, u, δ)
 
     n = length(population)
     u_means = mean(u, dims=1)
+    
     w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
 
     idx_resampled = sample(1:n, weights(w), n, replace=true)
@@ -259,7 +260,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_stats = size(u,2)
 
     @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
-    # println("------------------ ϵ is: ", ϵ, " ------------------")
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -277,8 +277,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ######################################################################
         ## -- update all particles, only the largest 'u' (single-threaded)
         ######################################################################
-        # println("---------------------------------------------------------")
-        # println("---------------------------------------------------------")
         for i in eachindex(population)
 
             # proposal
@@ -307,49 +305,34 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ######################################################################
         ## -- update all particles, only the largest 'u' (multi-threaded)
         ######################################################################
-
-        #= index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-
         # Executors with strong scaling (1d-normal test): 
         # ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-        let Σ_jump = Σ_jump, ϵ = ϵ  # , population = population, u = u 
-            @floop ThreadedEx(basesize = 4) for i in eachindex(population)
+        # let Σ_jump = Σ_jump, ϵ = ϵ
+        #     @floop ThreadedEx(basesize = 4) for i in eachindex(population)
                 
-                # proposal
-                local θproposal = proposal(population[i], Σ_jump)
+        #         # proposal
+        #         local θproposal = proposal(population[i], Σ_jump)
 
-                # acceptance probability
-                if pdf(prior, θproposal) > 0
-                    ##########################################################
-                    # Used for development, can be deleted later 
-                    local ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                    local u_proposal = cdfs_dist_prior(ρ_proposal)
-                    ##########################################################
-                    # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
-                    local accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                        exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-                else
-                    local accept_prob = 0.0
-                end
+        #         # acceptance probability
+        #         if pdf(prior, θproposal) > 0
+        #             local ρ_proposal = f_dist(θproposal, args...; kwargs...)
+        #             local u_proposal = cdfs_dist_prior(ρ_proposal)
+        #             # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
+        #             local accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+        #                 exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+        #         else
+        #             local accept_prob = 0.0
+        #         end
 
-                if rand() < accept_prob
-                    population[i] = θproposal
-                    # If updating only largest u:
-                    u[i,index_max_u] = u_proposal[index_max_u]  # transformed distances
-                    # If updating all stats:
-                    # u[i,:] .= u_proposal  # 
-                    ##########################################################
-                    # Used for development, can be deleted later 
-                    # If updating only largest u:
-                    ρ[i,index_max_u] = ρ_proposal[index_max_u]
-                    # If updating all stats:
-                    # ρ[i,:] .= ρ_proposal
-                    ##########################################################
-                    @reduce n_accept += 1
-                end
+        #         if rand() < accept_prob
+        #             population[i] = θproposal
+        #             u[i,:] .= u_proposal 
+        #             ρ[i,:] .= ρ_proposal
+        #             @reduce n_accept += 1
+        #         end
 
-            end
-        end =#
+        #     end
+        # end
         ######################################################################
 
         ## -- update epsilon and jump distribution
@@ -366,7 +349,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # println("----- update! -----") 
             ϵ[index_max_u] = ϵnew
         end
-        # println("index max u: ", index_max_u, " - ϵold was: ", ϵold, " - updated ϵ: ", ϵ)
+        # println("index max u: ", index_max_u, " - ϵold was: ", ϵold, " - updated ϵ: ", round.(ϵ, sigdigits=4))
         # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
 
         ## -- resample 
@@ -376,7 +359,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             Σ_jump = estimate_jump_covariance(population, β)
             ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
-            ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
+            # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
+            ϵ = ϵnew
 
             n_resampling += 1
 
