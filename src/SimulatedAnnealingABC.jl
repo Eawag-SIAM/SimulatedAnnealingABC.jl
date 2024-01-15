@@ -340,11 +340,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update only the ϵ corresponding to the largest u
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
         ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
-        # ϵold = ϵ[index_max_u]
-        #= if ϵnew <= ϵold
+        ϵold = ϵ[index_max_u]
+        if ϵnew <= ϵold
             ϵ[index_max_u] = ϵnew
-        end =#
-        ϵ[index_max_u] = ϵnew
+        end
+        # ϵ[index_max_u] = ϵnew
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
