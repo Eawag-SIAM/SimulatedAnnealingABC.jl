@@ -340,11 +340,15 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- update only the ϵ corresponding to the largest u
         index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
         ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
-        ϵold = ϵ[index_max_u]
-        if ϵnew <= ϵold
-            ϵ[index_max_u] = ϵnew
-        end
-        # ϵ[index_max_u] = ϵnew
+        # -----------------------------------------------------
+        ### Following lines are needed to ensure that epsilon is not larger than the previous one
+        ### It might not be necessary
+        # ϵold = ϵ[index_max_u]
+        # if ϵnew <= ϵold
+        #     ϵ[index_max_u] = ϵnew
+        # end
+        # -----------------------------------------------------
+        ϵ[index_max_u] = ϵnew
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
@@ -352,9 +356,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             Σ_jump = estimate_jump_covariance(population, β)
             ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+            # -----------------------------------------------------
+            ### Following line is needed to ensure that epsilon is not larger than the previous one
+            ### It might not be necessary
             # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
+            # -----------------------------------------------------
             ϵ = ϵnew
-
             n_resampling += 1
         end 
        
