@@ -116,6 +116,11 @@ scatter!(P_scatter_2, flatchain[2,:], flatchain[1,:], markercolor = :yellow, lab
 display(plot(P_scatter_1, P_scatter_2, layout = (1, 2), aspect_ratio = :equal))
 ########################################################################################
 
+########################################################################################
+### Reset RNG seed for the inference
+### Use Random.seed!() for random inference outputs  
+Random.seed!(1113)
+########################################################################################
 
 nsim = 2_000_000  # total number of particle updates 
 # N.B.: for NLAR1, 'nsim' is re-defined below
@@ -332,6 +337,7 @@ function f_dist_euclidean_multeps_withmedian(θ)
 	rho = [euclidean(ss[ix], ss_obs[ix]) for ix in 1:size(ss,1)]
 	return rho
 end
+
 
 # --- Run for single distance ---
 out_singeps = sabc(f_dist_euclidean_singeps_withmedian, prior; n_particles = 1000, n_simulation = nsim,  v = 1.2)
