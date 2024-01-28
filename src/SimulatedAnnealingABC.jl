@@ -48,6 +48,7 @@ Holds results
 
 - `population`: vector of parameter samples from the approximate posterior
 - `u`: transformed distances
+- `ρ`: distances
 - `state`: state of algorithm
 """
 struct SABCresult{T, S}
@@ -91,7 +92,7 @@ Update ϵ
 Single-epsilon: see eq(31)
 Multi-epsilon: "new" update rule
 """
-function new_update_epsilon(u, v, n)
+function update_epsilon(u, v, n)
     mean_u = mean(u)
     if n > 1
         α2 = Float64(v * (2*n-1) * (n-1)^2 * factorial(big(2*n+2)) / (n * (2*n^2-4*n+1) * factorial(big(n+1)) * factorial(big(n+2))))
@@ -144,6 +145,17 @@ Proposal for 1-dimension
 """
 proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
 
+"""
+Extract distances for single- and multi-epsilon
+"""
+function get_distances(x::Vector{Any})
+    return x[1], x[2]
+end
+
+function get_distances(x::Vector{Float64})
+    return x, nothing
+end
+
 
 """
 # Initialisation step
@@ -170,11 +182,16 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Initialize containers
 
     θ = rand(prior)
-    ρinit = f_dist(θ, args...; kwargs...)
+    ρinit, ρinit_all = get_distances(f_dist(θ, args...; kwargs...)) 
     n_stats = length(ρinit)
 
     population = Vector{typeof(θ)}(undef, n_particles)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
+
+    if ρinit_all != nothing
+        n_stats_all = length(ρinit_all)
+        distances_prior_all = Array{eltype(ρinit)}(undef, n_particles, n_stats_all)
+    end
 
     ## ------------------
     ## Build prior sample
@@ -182,15 +199,21 @@ function initialization(f_dist, prior::Distribution, args...;
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
-        ρinit = f_dist(θ, args...; kwargs...)
-
+        ρinit, ρinit_all = get_distances(f_dist(θ, args...; kwargs...)) 
         ## store parameter and distances
         population[i] = θ
         distances_prior[i,:] .= ρinit
+        if ρinit_all != nothing
+            distances_prior_all[i,:] .= ρinit_all
+        end
     end
 
-    ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
-
+    if ρinit_all != nothing
+        ρ_history = [[mean(ic) for ic in eachcol(distances_prior_all)]]
+    else
+        ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
+    end
+    
     ## ----------------------------------
     ## learn cdf and compute ϵ
 
@@ -205,11 +228,16 @@ function initialization(f_dist, prior::Distribution, args...;
     end
 
     u_history = [[mean(ic) for ic in eachcol(u)]]
-    
+
+    # we don't need distances_prior any more, only all ρ components to fill ρ_history  
+    if ρinit_all != nothing
+        distances_prior = distances_prior_all
+    end
+
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
-    ϵ = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
+    ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
     ## store it
     ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
@@ -218,6 +246,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## collect all parameters and states of the algorithm
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
                                 # and neglect the first call to f_dist ('initialization of containers')  
+
     state = SABCstate(ϵ,
                       ϵ_history,
                       ρ_history,
@@ -229,7 +258,6 @@ function initialization(f_dist, prior::Distribution, args...;
 
     @info "Population with $n_particles particles initialised."; flush(stderr)
     @info "Initial ϵ = $ϵ"; flush(stderr)
-
     return SABCresult(population, u, distances_prior, state)
 
 end
@@ -256,7 +284,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population = copy(population_state.population)
     u = copy(population_state.u)
     ρ = copy(population_state.ρ)
-
     n_stats = size(u,2)
 
     @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
@@ -274,72 +301,90 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     @info "$(now) -- Starting population updates."; flush(stderr)
     for ix in 1:n_population_updates
 
-        ######################################################################
-        ## -- update all particles, only the largest 'u' (single-threaded)
-        ######################################################################
-        for i in eachindex(population)
+        if Threads.nthreads() == 1
 
-            # proposal
-            θproposal = proposal(population[i], Σ_jump)
+            ######################################################################
+            ## -- Update all particles 
+            ## -- Single-threaded (comment this out to run parallel version)
+            ######################################################################
+            for i in eachindex(population)
 
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                u_proposal = cdfs_dist_prior(ρ_proposal)
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-            else
-                accept_prob = 0.0
+                # proposal
+                θproposal = proposal(population[i], Σ_jump)
+
+                # acceptance probability
+                if pdf(prior, θproposal) > 0
+                    ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+                    u_proposal = cdfs_dist_prior(ρ_proposal)
+                    accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                        exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+                else
+                    accept_prob = 0.0
+                end
+
+                if rand() < accept_prob
+                    population[i] = θproposal
+                    u[i,:] .= u_proposal 
+                    if ρ_proposal_all != nothing
+                        ρ[i,:] .= ρ_proposal_all
+                    else
+                        ρ[i,:] .= ρ_proposal
+                    end
+                    n_accept += 1
+                end
+
             end
+            ######################################################################
 
-            if rand() < accept_prob
-                population[i] = θproposal
-                u[i,:] .= u_proposal  
-                ρ[i,:] .= ρ_proposal
-                n_accept += 1
+        elseif Threads.nthreads() > 1
+
+            ######################################################################
+            ## -- Update all particles 
+            ## -- Multi-threaded (comment this out to run serial version)
+            ######################################################################
+            # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
+            let Σ_jump = Σ_jump, ϵ = ϵ 
+                rpopulation = Ref(population)
+                ru = Ref(u)
+                rρ = Ref(ρ)
+                @floop ThreadedEx(basesize = Threads.nthreads()) for i in eachindex(population)
+                    # proposal
+                    @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
+
+                    # acceptance probability
+                    if pdf(prior, θproposal) > 0
+                        ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+                        u_proposal = cdfs_dist_prior(ρ_proposal)
+                        @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
+                                                exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
+                    else
+                        accept_prob = 0.0
+                    end
+
+                    if rand() < accept_prob
+                        @inbounds rpopulation[][i] = θproposal
+                        @inbounds ru[][i,:] .= u_proposal 
+                        if ρ_proposal_all != nothing
+                            @inbounds rρ[][i,:] .= ρ_proposal_all
+                        else
+                            @inbounds rρ[][i,:] .= ρ_proposal
+                        end
+                        @reduce n_accept += 1
+                    end
+                end
             end
-
+            ######################################################################
+        else
+            error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
         end
-        ######################################################################
-
-        ######################################################################
-        ## -- update all particles, only the largest 'u' (multi-threaded)
-        ######################################################################
-        # Executors with strong scaling (1d-normal test): 
-        # ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-        # let Σ_jump = Σ_jump, ϵ = ϵ
-        #     @floop ThreadedEx(basesize = 4) for i in eachindex(population)
-                
-        #         # proposal
-        #         local θproposal = proposal(population[i], Σ_jump)
-
-        #         # acceptance probability
-        #         if pdf(prior, θproposal) > 0
-        #             local ρ_proposal = f_dist(θproposal, args...; kwargs...)
-        #             local u_proposal = cdfs_dist_prior(ρ_proposal)
-        #             # u_proposal = cdfs_dist_prior(f_dist(θproposal, args...; kwargs...))
-        #             local accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-        #                 exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-        #         else
-        #             local accept_prob = 0.0
-        #         end
-
-        #         if rand() < accept_prob
-        #             population[i] = θproposal
-        #             u[i,:] .= u_proposal 
-        #             ρ[i,:] .= ρ_proposal
-        #             @reduce n_accept += 1
-        #         end
-
-        #     end
-        # end
-        ######################################################################
 
         ## -- update epsilon and jump distribution
         Σ_jump = estimate_jump_covariance(population, β)
+        # ////////////////////////////////////////////////////////
         ## -- update only the ϵ corresponding to the largest u
-        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-        ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
+        # index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
+        # ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
+        # ////////////////////////////////////////////////////////
         # -----------------------------------------------------
         ### Following lines are needed to ensure that epsilon is not larger than the previous one
         ### It might not be necessary
@@ -348,20 +393,20 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         #     ϵ[index_max_u] = ϵnew
         # end
         # -----------------------------------------------------
-        ϵ[index_max_u] = ϵnew
+        # ϵ[index_max_u] = ϵnew
+        ## -- Simple update of all ϵ
+        ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
             population, u = resample_population(population, u, δ)
-
             Σ_jump = estimate_jump_covariance(population, β)
-            ϵnew = [new_update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
             # -----------------------------------------------------
             ### Following line is needed to ensure that epsilon is not larger than the previous one
             ### It might not be necessary
             # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
             # -----------------------------------------------------
-            ϵ = ϵnew
+            ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
             n_resampling += 1
         end 
        
@@ -387,7 +432,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
             last_checkpoint_epsilon = ix
         end
-
     end
 
     ## store the last epsilon value, if not already done
@@ -400,17 +444,15 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ## update state
     state.ϵ = ϵ
     state.ϵ_history = ϵ_history
-    ##########################################################
-    # Used for development, can be deleted later 
     state.u_history = u_history
     state.ρ_history = ρ_history
-    ##########################################################
     state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
     state.n_resampling = n_resampling
     population_state.population .= population
     population_state.u .= u
+    population_state.ρ .= ρ
 
     @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."; flush(stderr)
     return population_state
@@ -460,14 +502,13 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ,
-                                      kwargs...)
+                                      v=v, β=β, δ=δ, kwargs...)
 
     ## --------------
     ## Sampling
     ## --------------
     n_sim_remaining = n_simulation - population_state.state.n_simulation
-    n_sim_remaining < n_particles && @warn "`n_simulation` to small to update all particles!"
+    n_sim_remaining < n_particles && @warn "`n_simulation` too small to update all particles!"
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
