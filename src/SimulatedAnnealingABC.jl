@@ -237,7 +237,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
-    ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]  # NEW update rule suitable for single and multi ϵ
+    ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
     ## store it
     ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
@@ -343,7 +343,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             ## -- Multi-threaded (comment this out to run serial version)
             ######################################################################
             # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-            let Σ_jump = Σ_jump, ϵ = ϵ 
+            let Σ_jump = Σ_jump, ϵ = ϵ, flooccept::Int = 0
                 rpopulation = Ref(population)
                 ru = Ref(u)
                 rρ = Ref(ρ)
@@ -369,9 +369,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                         else
                             @inbounds rρ[][i,:] .= ρ_proposal
                         end
-                        @reduce n_accept += 1
+                        @reduce(flooccept += 1)
                     end
                 end
+                n_accept += flooccept
             end
             ######################################################################
         else
@@ -396,6 +397,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ϵ[index_max_u] = ϵnew
         ## -- Simple update of all ϵ
         ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
+        # ////////////////////////////////////////////////////////
+        # use larger v for largest u
+        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+        ϵ[index_max_u] = update_epsilon(u[:,index_max_u], 5*v, n_stats) 
+        # ////////////////////////////////////////////////////////
 
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
@@ -407,6 +413,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
             # -----------------------------------------------------
             ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+            # ////////////////////////////////////////////////////////
+            # use a large v for the largest u
+            index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+            ϵ[index_max_u] = update_epsilon(u[:,index_max_u], 5*v, n_stats) 
+            # ////////////////////////////////////////////////////////
             n_resampling += 1
         end 
        
