@@ -95,8 +95,16 @@ Multi-epsilon: "new" update rule
 function update_epsilon(u, v, n)
     mean_u = mean(u)
     if n > 1
-        α2 = Float64(v * (2*n-1) * (n-1)^2 * factorial(big(2*n+2)) / (n * (2*n^2-4*n+1) * factorial(big(n+1)) * factorial(big(n+2))))
-        ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/(1+v/(sqrt(α2)*n))
+        # ----------------------------
+        # From the paper:
+        # α2 = Float64(v * (2*n-1) * (n-1)^2 * factorial(big(2*n+2)) / (n * (2*n^2-4*n+1) * factorial(big(n+1)) * factorial(big(n+2))))
+        # ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/(1+v/(sqrt(α2)*n))
+        # We rename v->v':
+        # and rewrite ϵ_new -> mean_u/(1+v'/(sqrt(α2)*n)) as
+        # ϵ_new -> mean_u/v 
+        # with v = 1+v'/(sqrt(α2)*n) ~ 1.2
+        # ----------------------------
+        ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/v  
     elseif n == 1
         ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
     else 
@@ -274,7 +282,7 @@ See `sabc`
 """
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
-                            v=1.2, β=0.8, δ=0.1,
+                            v=1.2, β=0.8, δ=0.1, vstar = 2.1,
                             resample=length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
@@ -399,8 +407,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
         # ////////////////////////////////////////////////////////
         # use larger v for largest u
-        index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-        ϵ[index_max_u] = update_epsilon(u[:,index_max_u], 5*v, n_stats) 
+        if n_stats > 1
+            index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+            ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
+        end
         # ////////////////////////////////////////////////////////
 
         ## -- resample 
@@ -414,9 +424,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # -----------------------------------------------------
             ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
             # ////////////////////////////////////////////////////////
-            # use a large v for the largest u
-            index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-            ϵ[index_max_u] = update_epsilon(u[:,index_max_u], 5*v, n_stats) 
+            # use larger v for the largest u
+            if n_stats > 1
+                index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+                ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
+            end
             # ////////////////////////////////////////////////////////
             n_resampling += 1
         end 
@@ -477,7 +489,7 @@ end
                      n_particles = 100, n_simulation = 10_000,
                      eps_init = 1.0,
                      resample = n_particles,
-                     v=1.2, β=0.8, δ=0.1,
+                     v=1.2, β=0.8, δ=0.1, vstar = 2.1,
                      kwargs...)
 
 ```
@@ -501,7 +513,7 @@ end
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               resample = n_particles,
-              v=1.2, β=0.8, δ=0.1,
+              v=1.2, β=0.8, δ=0.1, vstar = 2.1,
               checkpoint_history = 1,
               checkpoint_display = 100,
               kwargs...)
@@ -523,7 +535,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ, checkpoint_history = checkpoint_history, 
+                       v=v, β=β, δ=δ, vstar=vstar, 
+                       checkpoint_history = checkpoint_history, 
                        checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
 
