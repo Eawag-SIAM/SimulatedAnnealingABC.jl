@@ -184,9 +184,14 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-        @info "Using threads: $(Threads.nthreads()) "; flush(stderr)
     
-        ## ------------------------
+    @info "Using threads: $(Threads.nthreads()) "; flush(stderr)
+    if Threads.nthreads() > 1
+        BLAS.set_num_threads(1)
+        @info "Set BLAS threads = $(LinearAlgebra.BLAS.get_num_threads()) "; flush(stderr)
+    end
+    
+    ## ------------------------
     ## Initialize containers
 
     θ = rand(prior)
