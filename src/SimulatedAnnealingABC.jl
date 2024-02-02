@@ -15,6 +15,7 @@ import Roots
 using Dates
 using FLoops
 using FoldsThreads
+using ThreadPinning
 
 include("cdf_estimators.jl")
 
@@ -189,6 +190,10 @@ function initialization(f_dist, prior::Distribution, args...;
     if Threads.nthreads() > 1
         BLAS.set_num_threads(1)
         @info "Set BLAS threads = $(LinearAlgebra.BLAS.get_num_threads()) "; flush(stderr)
+        if Sys.islinux()
+            @info "Set 'pinthreads(:cores)' for optimal multi-threading performance"; flush(stderr)
+            pinthreads(:cores)
+        end
     end
     
     ## ------------------------
