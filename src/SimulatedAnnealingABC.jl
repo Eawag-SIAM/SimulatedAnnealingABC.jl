@@ -96,11 +96,11 @@ Multi-epsilon: "new" update rule
 function update_epsilon(u, ui, v, n)
     mean_u = mean(u, dims=1)
     mean_ui = mean_u[ui]
-    q = mean_u / mean_ui
     if n > 1
         if mean_ui <= eps()
             error("Division by zero - Mean u for statistic $ui = $mean_ui - Multi-epsilon not possible. Try single-epsilon.")
         end
+        q = mean_u / mean_ui
         cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
         num = 1 - (sum(q.^(n/2)) / (2*n-1))
         den = cn*(n-1)*mean_ui^(n/2)*prod(q)
