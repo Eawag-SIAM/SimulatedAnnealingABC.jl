@@ -93,21 +93,20 @@ Update ϵ
 Single-epsilon: see eq(31)
 Multi-epsilon: "new" update rule
 """
-function update_epsilon(u, v, n)
-    mean_u = mean(u)
+function update_epsilon(u, ui, v, n)
+    mean_u = mean(u, dims=1)
+    mean_ui = mean_u[ui]
+    q = mean_u / mean_ui
     if n > 1
-        # ----------------------------
-        # From the paper:
-        # α2 = Float64(v * (2*n-1) * (n-1)^2 * factorial(big(2*n+2)) / (n * (2*n^2-4*n+1) * factorial(big(n+1)) * factorial(big(n+2))))
-        # ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/(1+v/(sqrt(α2)*n))
-        # We rename v->v':
-        # and rewrite ϵ_new -> mean_u/(1+v'/(sqrt(α2)*n)) as
-        # ϵ_new -> mean_u/v 
-        # with v = 1+v'/(sqrt(α2)*n) ~ 1.2
-        # ----------------------------
-        ϵ_new = mean_u <= eps() ? zero(mean_u) : mean_u/v  
+        if mean_ui <= eps()
+            error("Division by zero - Mean u for statistic $ui = $mean_ui - Multi-epsilon not possible. Try single-epsilon.")
+        end
+        cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
+        num = 1 - (sum(q.^(n/2)) / (2*n-1))
+        den = cn*(n-1)*mean_ui^(n/2)*prod(q)
+        ϵ_new = mean_ui/(1+v*num/den)
     elseif n == 1
-        ϵ_new = mean_u <= eps() ? zero(mean_u) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_u^2, (0, mean_u))
+        ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
     else 
         error("Inconsistency - number of statistics = $n should be >= 1")
     end
@@ -255,7 +254,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ## resampling before setting intial epsilon
     population, u = resample_population(population, u, δ)
     ## now, intial epsilon
-    ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+    ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
     ## store it
     ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
@@ -414,13 +413,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # -----------------------------------------------------
         # ϵ[index_max_u] = ϵnew
         ## -- Simple update of all ϵ
-        ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
+        # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
+        ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
         # ////////////////////////////////////////////////////////
         # use larger v for largest u
-        if n_stats > 1
-            index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-            ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
-        end
+        # if n_stats > 1
+        #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+        #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
+        # end
         # ////////////////////////////////////////////////////////
 
         ## -- resample 
@@ -432,13 +432,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             ### It might not be necessary
             # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
             # -----------------------------------------------------
-            ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+            # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+            ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
             # ////////////////////////////////////////////////////////
             # use larger v for the largest u
-            if n_stats > 1
-                index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-                ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
-            end
+            # if n_stats > 1
+            #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+            #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
+            # end
             # ////////////////////////////////////////////////////////
             n_resampling += 1
         end 
