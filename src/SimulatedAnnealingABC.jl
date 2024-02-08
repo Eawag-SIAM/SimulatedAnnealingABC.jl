@@ -291,7 +291,7 @@ See `sabc`
 """
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
-                            v=1.2, β=0.8, δ=0.1, vstar = 2.1,
+                            v=1.2, β=0.8, δ=0.1,
                             resample=length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
@@ -500,7 +500,7 @@ end
                      n_particles = 100, n_simulation = 10_000,
                      eps_init = 1.0,
                      resample = n_particles,
-                     v=1.2, β=0.8, δ=0.1, vstar = 2.1,
+                     v=1.2, β=0.8, δ=0.1,
                      kwargs...)
 
 ```
@@ -524,7 +524,7 @@ end
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               resample = n_particles,
-              v=1.2, β=0.8, δ=0.1, vstar = 2.1,
+              v=1.2, β=0.8, δ=0.1,
               checkpoint_history = 1,
               checkpoint_display = 100,
               kwargs...)
@@ -546,7 +546,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ, vstar=vstar, 
+                       v=v, β=β, δ=δ, 
                        checkpoint_history = checkpoint_history, 
                        checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
