@@ -16,6 +16,7 @@ using Dates
 using FLoops
 using FoldsThreads
 using ThreadPinning
+ThreadPinning.Prefs.set_os_warning(false)
 
 include("cdf_estimators.jl")
 
@@ -103,8 +104,10 @@ function update_epsilon(u, ui, v, n)
         q = mean_u / mean_ui
         cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
         num = 1 - (sum(q.^(n/2)) / (2*n-1))
-        den = cn*(n-1)*mean_ui^(n/2)*prod(q)
-        ϵ_new = mean_ui/(1+v*num/den)
+        den = cn*(n-1)*mean_ui^(1+n/2)*prod(q)
+        βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
+        # ϵ_new = mean_ui/(1+v*num/den)  # This is good when mean_ui << 1
+        ϵ_new = 1/(βi + v*num/den)       # General, good also for mean_ui ≈ 1
     elseif n == 1
         ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
     else 
@@ -121,11 +124,10 @@ function resample_population(population, u, δ)
 
     n = length(population)
     u_means = mean(u, dims=1)
-    
     w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
-
+    
     idx_resampled = sample(1:n, weights(w), n, replace=true)
-
+    
     population = population[idx_resampled]
     u = u[idx_resampled,:]
 
@@ -212,7 +214,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     ## ------------------
     ## Build prior sample
-
+    @info "Initializing population..."; flush(stderr)
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
@@ -244,21 +246,120 @@ function initialization(f_dist, prior::Distribution, args...;
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
 
-    u_history = [[mean(ic) for ic in eachcol(u)]]
-
+    # u_history = [[mean(ic) for ic in eachcol(u)]]
     # we don't need distances_prior any more, only all ρ components to fill ρ_history  
     if ρinit_all != nothing
         distances_prior = distances_prior_all
     end
 
     ## resampling before setting intial epsilon
-    population, u = resample_population(population, u, δ)
+    # population, u = resample_population(population, u, δ)
     ## now, intial epsilon
     ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
     ## store it
-    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
+    # u_history = [[mean(ic) for ic in eachcol(u)]]
+    # ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
     Σ_jump = estimate_jump_covariance(population, β)
+
+    ######################################################################
+    ######################################################################
+    # @info "Equalizing initial population (it can take a few minutes) ... "; flush(stderr)
+    ######################################################################
+    ######################################################################
+    # for ix in 1:200
+
+    #     if Threads.nthreads() == 1
+    
+    #         ######################################################################
+    #         ## -- Update all particles 
+    #         ## -- Single-threaded (comment this out to run parallel version)
+    #         ######################################################################
+    #         for i in eachindex(population)
+    
+    #             # proposal
+    #             θproposal = proposal(population[i], Σ_jump)
+    
+    #             # acceptance probability
+    #             if pdf(prior, θproposal) > 0
+    #                 ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+    #                 u_proposal = cdfs_dist_prior(ρ_proposal)
+    #                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+    #                     exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+    #             else
+    #                 accept_prob = 0.0
+    #             end
+    
+    #             if rand() < accept_prob
+    #                 population[i] = θproposal
+    #                 u[i,:] .= u_proposal 
+    #                 if ρ_proposal_all != nothing
+    #                     distances_prior[i,:] .= ρ_proposal_all
+    #                 else
+    #                     distances_prior[i,:] .= ρ_proposal
+    #                 end
+    #             end
+    
+    #         end
+    #         ######################################################################
+    
+    #     elseif Threads.nthreads() > 1
+    
+    #         ######################################################################
+    #         ## -- Update all particles 
+    #         ## -- Multi-threaded (comment this out to run serial version)
+    #         ######################################################################
+    #         # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
+    #         let Σ_jump = Σ_jump, ϵ = ϵ
+    #             rpopulation = Ref(population)
+    #             ru = Ref(u)
+    #             rρ = Ref(distances_prior)
+    #             @floop ThreadedEx(basesize = Threads.nthreads()) for i in eachindex(population)
+    #                 # proposal
+    #                 @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
+    
+    #                 # acceptance probability
+    #                 if pdf(prior, θproposal) > 0
+    #                     ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+    #                     u_proposal = cdfs_dist_prior(ρ_proposal)
+    #                     @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
+    #                                             exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
+    #                 else
+    #                     accept_prob = 0.0
+    #                 end
+    
+    #                 if rand() < accept_prob
+    #                     @inbounds rpopulation[][i] = θproposal
+    #                     @inbounds ru[][i,:] .= u_proposal 
+    #                     if ρ_proposal_all != nothing
+    #                         @inbounds rρ[][i,:] .= ρ_proposal_all
+    #                     else
+    #                         @inbounds rρ[][i,:] .= ρ_proposal
+    #                     end
+    #                 end
+    #             end
+    #         end
+    #         ######################################################################
+    #     else
+    #         error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
+    #     end
+    
+    #     ## -- update epsilon and jump distribution
+    #     Σ_jump = estimate_jump_covariance(population, β)
+    
+    # end
+    ######################################################################
+    ######################################################################
+    ######################################################################
+    ######################################################################
+    
+    ## now, intial epsilon
+    # ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+    ## store it
+    u_history = [[mean(ic) for ic in eachcol(u)]]
+    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
+
+
 
     ## collect all parameters and states of the algorithm
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
@@ -424,25 +525,25 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ////////////////////////////////////////////////////////
 
         ## -- resample 
-        if n_accept >= (n_resampling + 1) * resample
-            population, u = resample_population(population, u, δ)
-            Σ_jump = estimate_jump_covariance(population, β)
-            # -----------------------------------------------------
-            ### Following line is needed to ensure that epsilon is not larger than the previous one
-            ### It might not be necessary
-            # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
-            # -----------------------------------------------------
-            # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
-            ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
-            # ////////////////////////////////////////////////////////
-            # use larger v for the largest u
-            # if n_stats > 1
-            #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-            #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
-            # end
-            # ////////////////////////////////////////////////////////
-            n_resampling += 1
-        end 
+        # if n_accept >= (n_resampling + 1) * resample
+        #     population, u = resample_population(population, u, δ)
+        #     Σ_jump = estimate_jump_covariance(population, β)
+        #     # -----------------------------------------------------
+        #     ### Following line is needed to ensure that epsilon is not larger than the previous one
+        #     ### It might not be necessary
+        #     # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
+        #     # -----------------------------------------------------
+        #     # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
+        #     ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
+        #     # ////////////////////////////////////////////////////////
+        #     # use larger v for the largest u
+        #     # if n_stats > 1
+        #     #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
+        #     #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
+        #     # end
+        #     # ////////////////////////////////////////////////////////
+        #     n_resampling += 1
+        # end 
        
         # update progress
         if ix%checkpoint_display == 0
