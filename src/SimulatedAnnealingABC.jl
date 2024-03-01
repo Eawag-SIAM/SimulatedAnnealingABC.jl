@@ -317,7 +317,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     now = Dates.now()
     inter = 0  # to estimate ETA
+    if Threads.nthreads() > 1  # set basesize for parallel for loop
+        # nthreads -> number of available cores
+        # basesize = n_particles/nthreads -> size of the chunk assigned to each core 
+        bs = ceil(Int,n_particles/Threads.nthreads())
+    end
     @info "$(now) -- Starting population updates."; flush(stderr)
+
     for ix in 1:n_population_updates
 
         if Threads.nthreads() == 1
@@ -366,7 +372,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 rpopulation = Ref(population)
                 ru = Ref(u)
                 rρ = Ref(ρ)
-                @floop ThreadedEx(basesize = Threads.nthreads()) for i in eachindex(population)
+                @floop ThreadedEx(basesize = bs) for i in eachindex(population)
                     # proposal
                     @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
 
