@@ -366,8 +366,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 rpopulation = Ref(population)
                 ru = Ref(u)
                 rρ = Ref(ρ)
-                # Threads.nthreads()
-                @floop ThreadedEx(basesize = 1000) for i in eachindex(population)
+                @floop ThreadedEx(basesize = Threads.nthreads()) for i in eachindex(population)
                     # proposal
                     @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
 
