@@ -104,10 +104,10 @@ function update_epsilon(u, ui, v, n)
         q = mean_u / mean_ui
         cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
         num = 1 - (sum(q.^(n/2)) / (2*n-1))
-        den = cn*(n-1)*mean_ui^(n/2)*prod(q)
-        # βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
-        ϵ_new = mean_ui/(1+v*num/den)      # This is good when mean_ui << 1
-        # ϵ_new = 1/(βi + v*num/den)       # General, good also for mean_ui ≈ 1
+        den = cn*(n-1)*mean_ui^(1+n/2)*prod(q)
+        βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
+        # ϵ_new = mean_ui/(1+v*num/den)      # This is good when mean_ui << 1
+        ϵ_new = 1/(βi + v*num/den)           # General, good also for mean_ui ≈ 1
     elseif n == 1
         ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
     else 
@@ -130,8 +130,10 @@ function resample_population(population, u, δ)
     
     population = population[idx_resampled]
     u = u[idx_resampled,:]
+    # Effective sample size:
+    ess = (sum(w))^2/sum(w.^2) 
 
-    population, u
+    population, u, ess
 end
 
 
@@ -181,7 +183,7 @@ See docs for `sabc`.
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v, β, δ = 1.5, kwargs...)
+                        v = 1.2, β = 0.8, δ= 0.1, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -252,8 +254,8 @@ function initialization(f_dist, prior::Distribution, args...;
     end
 
     ## resampling with large δ before setting intial epsilon
-    @info "Initial resampling (δ = $δ)"
-    population, u = resample_population(population, u, δ)
+    population, u, ess = resample_population(population, u, δ)
+    @info "Initial resampling (δ = $δ) - ESS = $ess "
     ## now, intial epsilon
     ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
     ## store
@@ -273,7 +275,7 @@ function initialization(f_dist, prior::Distribution, args...;
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
-                      0, 0)  # n_accept and n_resampling are set to zero
+                      0, 1)  # n_accept set to 0, n_resampling to 1
 
     @info "Population with $n_particles particles initialised."; flush(stderr)
     @info "Initial ϵ = $ϵ"; flush(stderr)
@@ -434,7 +436,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ## -- resample 
         if n_accept >= (n_resampling + 1) * resample
 
-            population, u = resample_population(population, u, δ)
+            population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
             # -----------------------------------------------------
             ### Following line is needed to ensure that epsilon is not larger than the previous one
@@ -451,7 +453,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # end
             # ////////////////////////////////////////////////////////
             n_resampling += 1
-            @info "Resampling $n_resampling (δ = $δ)"
+            @info "Resampling $n_resampling (δ = $δ) - ESS = $ess"
         end 
        
         # update progress
@@ -546,7 +548,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=1.5, kwargs...)
+                                      v=v, β=β, δ=δ, kwargs...)
 
     ## --------------
     ## Sampling
