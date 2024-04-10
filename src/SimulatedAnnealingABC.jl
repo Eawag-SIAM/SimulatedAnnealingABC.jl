@@ -103,8 +103,8 @@ function update_epsilon(u, ui, v, n)
         end
         q = mean_u / mean_ui
         cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
-        num = 1 - (sum(q.^(n/2)) / (2*n-1))
-        den = cn*(n-1)*mean_ui^(1+n/2)*prod(q)
+        num = 1 + sum(q.^(n/2))
+        den = cn*(n+1)*mean_ui^(1+n/2)*prod(q.^2)
         βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
         # ϵ_new = mean_ui/(1+v*num/den)      # This is good when mean_ui << 1
         ϵ_new = 1/(βi + v*num/den)           # General, good also for mean_ui ≈ 1
@@ -253,7 +253,7 @@ function initialization(f_dist, prior::Distribution, args...;
         distances_prior = distances_prior_all
     end
 
-    ## resampling with large δ before setting intial epsilon
+    ## resampling before setting intial epsilon
     population, u, ess = resample_population(population, u, δ)
     @info "Initial resampling (δ = $δ) - ESS = $ess "
     ## now, intial epsilon
@@ -338,11 +338,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
                 # proposal
                 θproposal = proposal(population[i], Σ_jump)
+                # println("θproposal (", i, ") -> ", θproposal)
 
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
                     ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+                    # println("ρ_proposal (", i, ") -> ", ρ_proposal)
                     u_proposal = cdfs_dist_prior(ρ_proposal)
+                    # println("u_proposal (", i, ") -> ", u_proposal)
                     accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                         exp(sum((u[i,:] .- u_proposal) ./ ϵ))
                 else
