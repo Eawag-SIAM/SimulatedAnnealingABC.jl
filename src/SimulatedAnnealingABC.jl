@@ -32,6 +32,7 @@ Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}
+    dist_rescale::Vector{Float64}  # vector for rescaling distances
 
     # Containers to store trajectories
     ϵ_history::Vector{Vector{Float64}}
@@ -125,11 +126,11 @@ function resample_population(population, u, δ)
     n = length(population)
     u_means = mean(u, dims=1)
     w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
-    
     idx_resampled = sample(1:n, weights(w), n, replace=true)
     
     population = population[idx_resampled]
     u = u[idx_resampled,:]
+    
     # Effective sample size:
     ess = (sum(w))^2/sum(w.^2) 
 
@@ -158,15 +159,15 @@ Proposal for 1-dimension
 proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
 
 """
-Extract distances for single- and multi-epsilon
+Extract distances -> !! NOT NEEDED !! with hybrid multi-single epsilon instead of pure single-epsilon 
 """
-function get_distances(x::Vector{Any})
-    return x[1], x[2]
-end
+# function get_distances(x::Vector{Any})  # single epsilon
+#     return x[1], x[2]
+# end
 
-function get_distances(x::Vector{Float64})
-    return x, nothing
-end
+# function get_distances(x::Vector{Float64})  # multi epsilon
+#     return x
+# end
 
 
 """
@@ -183,7 +184,7 @@ See docs for `sabc`.
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.2, β = 0.8, δ= 0.1, kwargs...)
+                        v = 1.2, β = 0.8, δ= 0.1, single = true, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -203,16 +204,12 @@ function initialization(f_dist, prior::Distribution, args...;
     ## Initialize containers
 
     θ = rand(prior)
-    ρinit, ρinit_all = get_distances(f_dist(θ, args...; kwargs...)) 
+    ρinit = f_dist(θ, args...; kwargs...) 
     n_stats = length(ρinit)
+    distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
+    distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
 
     population = Vector{typeof(θ)}(undef, n_particles)
-    distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-
-    if ρinit_all != nothing
-        n_stats_all = length(ρinit_all)
-        distances_prior_all = Array{eltype(ρinit)}(undef, n_particles, n_stats_all)
-    end
 
     ## ------------------
     ## Build prior sample
@@ -220,44 +217,50 @@ function initialization(f_dist, prior::Distribution, args...;
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
-        ρinit, ρinit_all = get_distances(f_dist(θ, args...; kwargs...)) 
+        ρinit = f_dist(θ, args...; kwargs...)
         ## store parameter and distances
         population[i] = θ
         distances_prior[i,:] .= ρinit
-        if ρinit_all != nothing
-            distances_prior_all[i,:] .= ρinit_all
-        end
     end
 
-    if ρinit_all != nothing
-        ρ_history = [[mean(ic) for ic in eachcol(distances_prior_all)]]
-    else
-        ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
+    # Keep track of the original prior distances, before rescaling
+    ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
+
+    ### Calculate vector to rescale distances ###
+    dist_rescale = mean(ρ_history[1])./ρ_history[1]
+    # Rescale all prior distances
+    distances_prior_rescaled = distances_prior
+    for ir in eachrow(distances_prior_rescaled)
+        ir .*= dist_rescale
     end
+    # and store in history
+    push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
     
     ## ----------------------------------
     ## learn cdf and compute ϵ
 
     ## estimate cdf of ρ under the prior
-    any(distances_prior .< 0) && error("Negative distances are not allowed!")
+    any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
 
-    cdfs_dist_prior = build_cdf(distances_prior)
+    cdfs_dist_prior = build_cdf(distances_prior_rescaled)  
 
-    u = similar(distances_prior)
+    u = similar(distances_prior_rescaled)
+
     for i in 1:n_particles
-        u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
-    end
-
-    # we don't need distances_prior any more, only all ρ components to fill ρ_history  
-    if ρinit_all != nothing
-        distances_prior = distances_prior_all
+        u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
     end
 
     ## resampling before setting intial epsilon
     population, u, ess = resample_population(population, u, δ)
     @info "Initial resampling (δ = $δ) - ESS = $ess "
     ## now, intial epsilon
-    ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+    if single
+        usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+        ϵ = [update_epsilon(usum, 1, v, 1)] 
+    else
+        ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+    end
+    
     ## store
     u_history = [[mean(ic) for ic in eachcol(u)]]
     ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
@@ -269,6 +272,7 @@ function initialization(f_dist, prior::Distribution, args...;
                                 # and neglect the first call to f_dist ('initialization of containers')  
 
     state = SABCstate(ϵ,
+                      dist_rescale,
                       ϵ_history,
                       ρ_history,
                       u_history,
@@ -279,7 +283,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     @info "Population with $n_particles particles initialised."; flush(stderr)
     @info "Initial ϵ = $ϵ"; flush(stderr)
-    return SABCresult(population, u, distances_prior, state)
+    return SABCresult(population, u, distances_prior_rescaled, state)
 
 end
 
@@ -296,6 +300,7 @@ See `sabc`
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
+                            single = true, 
                             resample=2*length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
@@ -307,7 +312,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ρ = copy(population_state.ρ)
     n_stats = size(u,2)
 
-    @unpack ϵ, ϵ_history, ρ_history, u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
+    @unpack ϵ, dist_rescale, ϵ_history, ρ_history, 
+            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
     dim_par = length(first(population))
     n_particles = length(population)
 
@@ -342,10 +348,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
-                    ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
-                    # println("ρ_proposal (", i, ") -> ", ρ_proposal)
+                    ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
                     u_proposal = cdfs_dist_prior(ρ_proposal)
-                    # println("u_proposal (", i, ") -> ", u_proposal)
                     accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                         exp(sum((u[i,:] .- u_proposal) ./ ϵ))
                 else
@@ -355,11 +359,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 if rand() < accept_prob
                     population[i] = θproposal
                     u[i,:] .= u_proposal 
-                    if ρ_proposal_all != nothing
-                        ρ[i,:] .= ρ_proposal_all
-                    else
-                        ρ[i,:] .= ρ_proposal
-                    end
+                    ρ[i,:] .= ρ_proposal
                     n_accept += 1
                 end
 
@@ -383,7 +383,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
                     # acceptance probability
                     if pdf(prior, θproposal) > 0
-                        ρ_proposal, ρ_proposal_all = get_distances(f_dist(θproposal, args...; kwargs...))
+                        ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
                         u_proposal = cdfs_dist_prior(ρ_proposal)
                         @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
                                                 exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
@@ -394,11 +394,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                     if rand() < accept_prob
                         @inbounds rpopulation[][i] = θproposal
                         @inbounds ru[][i,:] .= u_proposal 
-                        if ρ_proposal_all != nothing
-                            @inbounds rρ[][i,:] .= ρ_proposal_all
-                        else
-                            @inbounds rρ[][i,:] .= ρ_proposal
-                        end
+                        @inbounds rρ[][i,:] .= ρ_proposal
                         @reduce(flooccept += 1)
                     end
                 end
@@ -427,7 +423,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ϵ[index_max_u] = ϵnew
         ## -- Simple update of all ϵ
         # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
-        ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+        # ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+        if single
+            usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+            ϵ = [update_epsilon(usum, 1, v, 1)] 
+        else
+            ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+        end
         # ////////////////////////////////////////////////////////
         # use larger v for largest u
         # if n_stats > 1
@@ -447,7 +449,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
             # -----------------------------------------------------
             # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
-            ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
+            # ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
+            if single
+                usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+                ϵ = [update_epsilon(usum, 1, v, 1)] 
+            else
+                ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+            end
             # ////////////////////////////////////////////////////////
             # use larger v for the largest u
             # if n_stats > 1
@@ -538,6 +546,7 @@ end
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
+              single = true,
               resample = 2*n_particles,
               v=1.2, β=0.8, δ=0.1,
               checkpoint_history = 1,
@@ -551,7 +560,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ, kwargs...)
+                                      v=v, β=β, δ=δ, single = single, kwargs...)
 
     ## --------------
     ## Sampling
@@ -562,6 +571,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
                        v=v, β=β, δ=δ, 
+                       single = single,
                        checkpoint_history = checkpoint_history, 
                        checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
