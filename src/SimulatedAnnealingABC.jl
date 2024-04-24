@@ -1,6 +1,5 @@
 module SimulatedAnnealingABC
 
-
 using LinearAlgebra
 using Random
 import Base.show
@@ -22,33 +21,30 @@ include("cdf_estimators.jl")
 
 export sabc, update_population!
 
-
 # -------------------------------------------
 # Define types to hold results
 # -------------------------------------------
-
 """
 Holds state of algorithm
 """
 mutable struct SABCstate
-    ϵ::Vector{Float64}
+    ϵ::Vector{Float64}             # epsilon = temperature
     dist_rescale::Vector{Float64}  # vector for rescaling distances
 
     # Containers to store trajectories
-    ϵ_history::Vector{Vector{Float64}}
+    ϵ_history::Vector{Vector{Float64}} 
     ρ_history::Vector{Vector{Float64}}
     u_history::Vector{Vector{Float64}}
 
-    cdfs_dist_prior              # function G in Albert et al.
+    cdfs_dist_prior              # function G in Albert et al., Statistics and Computing 25, 2015
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
-    n_simulation::Int
+    n_simulation::Int           # number of simulations
     n_accept::Int               # number of accepted updates
     n_resampling::Int           # number of population resamplings
 end
 
 """
 Holds results
-
 - `population`: vector of parameter samples from the approximate posterior
 - `u`: transformed distances
 - `ρ`: distances
@@ -56,8 +52,8 @@ Holds results
 """
 struct SABCresult{T, S}
     population::Vector{T}
-    u::Array{S}
-    ρ::Array{S}
+    u::Array{S}  # transformed distances
+    ρ::Array{S}  # user-defined distances
     state::SABCstate
 end
 
@@ -85,20 +81,18 @@ function show(io::Base.IO, s::SABCresult)
     println(io, " -------------------------------------- ")
 end
 
-
 # -------------------------------------------
-# algorithm
+# Algorithm functions
 # -------------------------------------------
-
 """
 Update ϵ
-Single-epsilon: see eq(31)
-Multi-epsilon: "new" update rule
+Single-epsilon: see eq(31) in Albert et al., Statistics and Computing 25, 2015
+Multi-epsilon: new update rule
 """
 function update_epsilon(u, ui, v, n)
     mean_u = mean(u, dims=1)
     mean_ui = mean_u[ui]
-    if n > 1
+    if n > 1  # multiple stats
         if mean_ui <= eps()
             error("Division by zero - Mean u for statistic $ui = $mean_ui - Multi-epsilon not possible. Try single-epsilon.")
         end
@@ -107,9 +101,8 @@ function update_epsilon(u, ui, v, n)
         num = 1 + sum(q.^(n/2))
         den = cn*(n+1)*mean_ui^(1+n/2)*prod(q.^2)
         βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
-        # ϵ_new = mean_ui/(1+v*num/den)      # This is good when mean_ui << 1
-        ϵ_new = 1/(βi + v*num/den)           # General, good also for mean_ui ≈ 1
-    elseif n == 1
+        ϵ_new = 1/(βi + v*num/den)      
+    elseif n == 1  # one stat
         ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
     else 
         error("Inconsistency - number of statistics = $n should be >= 1")
@@ -146,12 +139,10 @@ function estimate_jump_covariance(population, β)
 end
 
 
-
 """
 Proposal for n-dimensions, n > 1
 """
 proposal(θ, Σ::Matrix) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
-
 
 """
 Proposal for 1-dimension
@@ -159,37 +150,52 @@ Proposal for 1-dimension
 proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
 
 """
-Extract distances -> !! NOT NEEDED !! with hybrid multi-single epsilon instead of pure single-epsilon 
+Distance
 """
-# function get_distances(x::Vector{Any})  # single epsilon
-#     return x[1], x[2]
-# end
-
-# function get_distances(x::Vector{Float64})  # multi epsilon
-#     return x
-# end
+dist_euclidean(d) = sqrt(sum(d.^2))
 
 
 """
 # Initialisation step
 
 ## Arguments
-See docs for `sabc`.
+See docs for `sabc`
+
+type = 1 -> original single epsilon
+type = 2 -> multi epsilon
+type = 3 -> hybrid multiu-single-epsilon
 
 ## Value
 
 - population
 - u
+- prior distances
 - state
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.2, β = 0.8, δ= 0.1, single = true, kwargs...)
+                        v = 1.2, β = 0.8, δ= 0.1, type = 1, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    
+    # ------------------------------------ #
+    ############ Algorithm type ############
+    # 1: original single-epsilon
+    # 2: multi-epsilon
+    # 3: hybrid multi-u-single-epsilon 
+    if type == 1
+        @info "Preparing to run SABC algorithm: 'single-epsilon'"
+    elseif type == 2
+        @info "Preparing to run SABC algorithm: 'multi-epsilon'"
+    elseif type == 3
+        @info "Preparing to run SABC algorithm: 'hybrid multi-u-single-epsilon'"
+    else
+        error("Keyword type = $type not valid. Select type = 1, 2 or 3.")
+    end
+
+    # --------------------------------------------- #
+    ############ Check available threads ############
     @info "Using threads: $(Threads.nthreads()) "; flush(stderr)
     if Threads.nthreads() > 1
         BLAS.set_num_threads(1)
@@ -200,19 +206,20 @@ function initialization(f_dist, prior::Distribution, args...;
         end
     end
     
-    ## ------------------------
-    ## Initialize containers
-
-    θ = rand(prior)
-    ρinit = f_dist(θ, args...; kwargs...) 
+    # ------------------------------------------- #
+    ############ Initialize containers ############
+    θ = rand(prior)  # random sample
+    ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers 
     n_stats = length(ρinit)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-
+    if type == 1
+        distances_prior_single = Array{eltype(ρinit)}(undef, n_particles, 1)
+    end
     population = Vector{typeof(θ)}(undef, n_particles)
 
-    ## ------------------
-    ## Build prior sample
+    # ---------------------------------------- #
+    ############ Build prior sample ############
     @info "Initializing population..."; flush(stderr)
     for i in 1:n_particles
         ## sample
@@ -222,11 +229,12 @@ function initialization(f_dist, prior::Distribution, args...;
         population[i] = θ
         distances_prior[i,:] .= ρinit
     end
-
-    # Keep track of the original prior distances, before rescaling
+    # Keep track of the original prior distances (before rescaling)
+    # We save all individual distances also for algorithm of type 1 (single-epsilon)
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
-    ### Calculate vector to rescale distances ###
+    # ---------------------------------------- #
+    ############ Rescale distances  ############
     dist_rescale = mean(ρ_history[1])./ρ_history[1]
     # Rescale all prior distances
     distances_prior_rescaled = distances_prior
@@ -235,39 +243,55 @@ function initialization(f_dist, prior::Distribution, args...;
     end
     # and store in history
     push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
-    
-    ## ----------------------------------
-    ## learn cdf and compute ϵ
 
-    ## estimate cdf of ρ under the prior
+    # IMPORTANT! 
+    # One more thing: 
+    # algorithm of type 1 (single-epsilon) needs single distance
+    if type == 1
+        for ix in 1:n_particles
+            distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
+        end
+    end
+
+    # --------------------------------------------- #
+    ############ Learn cdf and compute ϵ ############
+    # Estimate cdf of ρ under the prior
     any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
-
-    cdfs_dist_prior = build_cdf(distances_prior_rescaled)  
-
-    u = similar(distances_prior_rescaled)
-
-    for i in 1:n_particles
-        u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
-    end
-
-    ## resampling before setting intial epsilon
+    if type == 1
+        cdfs_dist_prior = build_cdf(distances_prior_single)
+        u = similar(distances_prior_single)
+        for i in 1:n_particles
+            u[i,:] .= cdfs_dist_prior(distances_prior_single[i,:])
+        end
+    else 
+        cdfs_dist_prior = build_cdf(distances_prior_rescaled) 
+        u = similar(distances_prior_rescaled)
+        # Transformed distances
+        for i in 1:n_particles
+            u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
+        end
+    end 
+    
+    # resampling before setting intial epsilon
     population, u, ess = resample_population(population, u, δ)
-    @info "Initial resampling (δ = $δ) - ESS = $ess "
-    ## now, intial epsilon
-    if single
-        usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-        ϵ = [update_epsilon(usum, 1, v, 1)] 
-    else
-        ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+    @info "Initial resampling (δ = $δ) - ESS = $ess "  # ESS = Effective sample size
+    # now, intial epsilon
+    if type == 1 || type == 2
+        # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
+        ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+    elseif type == 3
+        u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+        ϵ = [update_epsilon(u_average, 1, v, 1)] 
     end
     
-    ## store
+    # store
     u_history = [[mean(ic) for ic in eachcol(u)]]
     ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
 
     Σ_jump = estimate_jump_covariance(population, β)
 
-    ## collect all parameters and states of the algorithm
+    # -------------------------------------------------------------------- #
+    ############ Collect parameters and states of the algorithm ############
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
                                 # and neglect the first call to f_dist ('initialization of containers')  
 
@@ -289,18 +313,21 @@ end
 
 
 """
-Updates particles and applies importance sampling if needed. Modifies `population_state`.
+Updates particles and applies importance sampling if needed. 
+Modifies `population_state`.
 
 ## Arguments
-
 See `sabc`
 
-
+type = 1 -> original single epsilon
+type = 2 -> multi epsilon
+type = 3 -> hybrid multiu-single-epsilon
 """
+
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.2, β=0.8, δ=0.1,
-                            single = true, 
+                            type = 1, 
                             resample=2*length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
@@ -313,15 +340,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_stats = size(u,2)
 
     @unpack ϵ, dist_rescale, ϵ_history, ρ_history, 
-            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  # 
-    dim_par = length(first(population))
+            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  
     n_particles = length(population)
 
-    n_population_updates = n_simulation ÷ n_particles
-    n_updates = n_population_updates * n_particles # number of calls to `f_dist`
-    # progbar = ProgressMeter.Progress(n_population_updates, desc="Updating population...", dt=0.5)
-    # show_summary(ϵ, u) = () -> [(:eps, ϵ), (:mean_transformed_distance, mean(u))]
-    last_checkpoint_epsilon = 0 
+    n_population_updates = n_simulation ÷ n_particles  # populations update = total simulations / particles
+    n_updates = n_population_updates * n_particles     # number of calls to `f_dist`
+    last_checkpoint_epsilon = 0                        # set checkpoint counter to zero
 
     now = Dates.now()
     inter = 0  # to estimate ETA
@@ -332,24 +356,30 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     end
     @info "$(now) -- Starting population updates."; flush(stderr)
 
+    # ---------------------------------------------------- #
+    ############ Main loop (population updates) ############
     for ix in 1:n_population_updates
 
         if Threads.nthreads() == 1
 
-            ######################################################################
-            ## -- Update all particles 
-            ## -- Single-threaded (comment this out to run parallel version)
-            ######################################################################
+            # ---------------------------------------------------- #
+            # -- Update all particles - Single-threaded -- #
+            # ---------------------------------------------------- #
             for i in eachindex(population)
 
                 # proposal
                 θproposal = proposal(population[i], Σ_jump)
-                # println("θproposal (", i, ") -> ", θproposal)
 
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
                     ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
-                    u_proposal = cdfs_dist_prior(ρ_proposal)
+                    if type == 1
+                        ρ_proposal_single = dist_euclidean(ρ_proposal)
+                        u_proposal = cdfs_dist_prior(ρ_proposal_single)
+                    else
+                        u_proposal = cdfs_dist_prior(ρ_proposal)
+                    end
+
                     accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                         exp(sum((u[i,:] .- u_proposal) ./ ϵ))
                 else
@@ -364,14 +394,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 end
 
             end
-            ######################################################################
+            # ---------------------------------------------------- #
 
         elseif Threads.nthreads() > 1
 
-            ######################################################################
-            ## -- Update all particles 
-            ## -- Multi-threaded (comment this out to run serial version)
-            ######################################################################
+            # ---------------------------------------------------- #
+            # -- Update all particles - Multi-threaded -- #
+            # ---------------------------------------------------- #
             # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
             let Σ_jump = Σ_jump, ϵ = ϵ, flooccept::Int = 0
                 rpopulation = Ref(population)
@@ -384,7 +413,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                     # acceptance probability
                     if pdf(prior, θproposal) > 0
                         ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
-                        u_proposal = cdfs_dist_prior(ρ_proposal)
+                        if type == 1
+                            ρ_proposal_single = dist_euclidean(ρ_proposal)
+                            u_proposal = cdfs_dist_prior(ρ_proposal_single)
+                        else
+                            u_proposal = cdfs_dist_prior(ρ_proposal)
+                        end
                         @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
                                                 exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
                     else
@@ -400,74 +434,41 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 end
                 n_accept += flooccept
             end
-            ######################################################################
+            # ---------------------------------------------------- #
         else
             error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
         end
 
-        ## -- update epsilon and jump distribution
+        # ---------------------------------------------------------- #
+        ############ Update epsilon and jump distribution ############
         Σ_jump = estimate_jump_covariance(population, β)
-        # ////////////////////////////////////////////////////////
-        ## -- update only the ϵ corresponding to the largest u
-        # index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]
-        # ϵnew = new_update_epsilon(u[:,index_max_u], v, n_stats)
-        # ////////////////////////////////////////////////////////
-        # -----------------------------------------------------
-        ### Following lines are needed to ensure that epsilon is not larger than the previous one
-        ### It might not be necessary
-        # ϵold = ϵ[index_max_u]
-        # if ϵnew <= ϵold
-        #     ϵ[index_max_u] = ϵnew
-        # end
-        # -----------------------------------------------------
-        # ϵ[index_max_u] = ϵnew
-        ## -- Simple update of all ϵ
-        # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)]
-        # ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
-        if single
-            usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-            ϵ = [update_epsilon(usum, 1, v, 1)] 
-        else
-            ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+        if type == 1 || type == 2
+            # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
+            ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+        elseif type == 3
+            u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+            ϵ = [update_epsilon(u_average, 1, v, 1)] 
         end
-        # ////////////////////////////////////////////////////////
-        # use larger v for largest u
-        # if n_stats > 1
-        #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-        #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
-        # end
-        # ////////////////////////////////////////////////////////
 
-        ## -- resample 
+        # -------------------------------- #
+        ############ Resampling ############ 
         if n_accept >= (n_resampling + 1) * resample
 
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
-            # -----------------------------------------------------
-            ### Following line is needed to ensure that epsilon is not larger than the previous one
-            ### It might not be necessary
-            # ϵ = [ϵnew[ϵi] <= ϵ[ϵi] ? ϵnew[ϵi] : ϵ[ϵi] for ϵi in eachindex(ϵ)]
-            # -----------------------------------------------------
-            # ϵ = [update_epsilon(ui, v, n_stats) for ui in eachcol(u)] 
-            # ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats]
-            if single
-                usum = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-                ϵ = [update_epsilon(usum, 1, v, 1)] 
-            else
-                ϵ = [update_epsilon(u, ui, v, n_stats) for ui in 1:n_stats] 
+            if type == 1 || type == 2
+                # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
+                ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+            elseif type == 3
+                u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
+                ϵ = [update_epsilon(u_average, 1, v, 1)] 
             end
-            # ////////////////////////////////////////////////////////
-            # use larger v for the largest u
-            # if n_stats > 1
-            #     index_max_u = findmax([mean(ic) for ic in eachcol(u)])[2]  # find column index for max u
-            #     ϵ[index_max_u] = update_epsilon(u[:,index_max_u], vstar*v, n_stats) 
-            # end
-            # ////////////////////////////////////////////////////////
             n_resampling += 1
             @info "Resampling $n_resampling (δ = $δ) - ESS = $ess"
         end 
        
-        # update progress
+        # ------------------------------------------------- #
+        ############ Update progress and history ############
         if ix%checkpoint_display == 0
             before = now
             now = Dates.now()
@@ -480,7 +481,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) "
             flush(stderr) 
         end
-        # ProgressMeter.next!(progbar, showvalues = show_summary(ϵ, u))
 
         # update ϵ_history
         if ix%checkpoint_history == 0
@@ -491,14 +491,15 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         end
     end
 
-    ## store the last epsilon value, if not already done
+    # store the last epsilon value, if not already done
     if last_checkpoint_epsilon != n_population_updates
         push!(ϵ_history, copy(ϵ))
         push!(u_history, [mean(ic) for ic in eachcol(u)])
         push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
     end
 
-    ## update state
+    # ---------------------------------- #
+    ############ Update state ############
     state.ϵ = ϵ
     state.ϵ_history = ϵ_history
     state.u_history = u_history
@@ -519,12 +520,12 @@ end
 
 """
 ```
-    sabc(f_dist, prior::Distribition, args...;
-                     n_particles = 100, n_simulation = 10_000,
-                     eps_init = 1.0,
-                     resample = n_particles,
-                     v=1.2, β=0.8, δ=0.1,
-                     kwargs...)
+sabc(f_dist, prior::Distribition, args...;
+        n_particles = 100, n_simulation = 10_000,
+        type = 1,
+        resample = 2*n_particles,
+        v=1.2, β=0.8, δ=0.1,
+        kwargs...)
 
 ```
 # Simulated Annealing Approximtaive Bayesian Inference Algorithm
@@ -538,6 +539,9 @@ end
 - `v=1.2`: Tuning parameter for XXX
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
+- type = 1 -> original single epsilon
+       = 2 -> multi epsilon
+       = 3 -> hybrid multiu-single-epsilon
 - `resample`: After how many accepted updates?
 - `kwargs...`: Further arguments passed to `f_dist``
 
@@ -546,32 +550,29 @@ end
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              single = true,
+              type = 1,
               resample = 2*n_particles,
               v=1.2, β=0.8, δ=0.1,
               checkpoint_history = 1,
               checkpoint_display = 100,
               kwargs...)
 
-    ## ------------------------
-    ## Initialization
-    ## ------------------------
-
+    # ------------------------------------ #
+    ############ Initialization ############
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ, single = single, kwargs...)
+                                      v=v, β=β, δ=δ, type = type, kwargs...)
 
-    ## --------------
-    ## Sampling
-    ## --------------
+    # ------------------------------ #
+    ############ Sampling ############
     n_sim_remaining = n_simulation - population_state.state.n_simulation
     n_sim_remaining < n_particles && @warn "`n_simulation` too small to update all particles!"
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
                        v=v, β=β, δ=δ, 
-                       single = single,
+                       type = type,
                        checkpoint_history = checkpoint_history, 
                        checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
