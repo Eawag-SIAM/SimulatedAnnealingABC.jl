@@ -7,7 +7,7 @@
 
 
 ## Installation
-
+The package is under development and not yet officially registered. You can install it from GitHub with
 ```Julia
 ] add https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl
 ```
