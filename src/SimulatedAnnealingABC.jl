@@ -135,7 +135,7 @@ end
 Estimate the coavariance for the jump distributions from a population
 """
 function estimate_jump_covariance(population, β)
-    β * cov(stack(population, dims=1)) + 1e-6*I
+    β * cov(stack(population, dims=1)) + 1e-15*I
 end
 
 
@@ -147,7 +147,7 @@ proposal(θ, Σ::Matrix) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
 """
 Proposal for 1-dimension
 """
-proposal(θ, Σ::Float64) = θ + rand(Normal(0, Σ))
+proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 
 """
 Distance
@@ -235,7 +235,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # ---------------------------------------- #
     ############ Rescale distances  ############
-    dist_rescale = mean(ρ_history[1])./ρ_history[1]
+    dist_rescale = 1 ./ ρ_history[1]
     # Rescale all prior distances
     distances_prior_rescaled = distances_prior
     for ir in eachrow(distances_prior_rescaled)
@@ -263,8 +263,8 @@ function initialization(f_dist, prior::Distribution, args...;
         for i in 1:n_particles
             u[i,:] .= cdfs_dist_prior(distances_prior_single[i,:])
         end
-    else 
-        cdfs_dist_prior = build_cdf(distances_prior_rescaled) 
+    else
+        cdfs_dist_prior = build_cdf(distances_prior_rescaled)
         u = similar(distances_prior_rescaled)
         # Transformed distances
         for i in 1:n_particles
@@ -294,6 +294,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ############ Collect parameters and states of the algorithm ############
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
                                 # and neglect the first call to f_dist ('initialization of containers')  
+
 
     state = SABCstate(ϵ,
                       dist_rescale,
@@ -355,6 +356,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         bs = ceil(Int,n_particles/Threads.nthreads())
     end
     @info "$(now) -- Starting population updates."; flush(stderr)
+    
 
     # ---------------------------------------------------- #
     ############ Main loop (population updates) ############
@@ -442,6 +444,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ---------------------------------------------------------- #
         ############ Update epsilon and jump distribution ############
         Σ_jump = estimate_jump_covariance(population, β)
+
         if type == 1 || type == 2
             # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
             ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 

@@ -64,3 +64,4 @@ function build_cdf(x::Array{T, 2} where T)
 
     return f
 end
+
