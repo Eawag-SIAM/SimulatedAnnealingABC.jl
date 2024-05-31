@@ -1,13 +1,12 @@
 # SimulatedAnnealingABC
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://scheidan.github.io/SimulatedAnnealingABC.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://scheidan.github.io/SimulatedAnnealingABC.jl/dev/)
 [![Build Status](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/Eawag-SIAM/SimulatedAnnealingABC.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Eawag-SIAM/SimulatedAnnealingABC.jl)
 
 
 ## Installation
-
+The package is under development and not yet officially registered. You can install it from GitHub with
 ```Julia
 ] add https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl
 ```
