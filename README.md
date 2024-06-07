@@ -15,19 +15,20 @@ Note, Julia 1.9 or newer is needed.
 ## Usage
 Here we show how to run the SimulatedAnnealingABC (SABC) algorithm to infer model parameters given some observed dataset.
 
+### Data (observations)
 Let us start off by generating a synthetic dataset, our "observations". Consider for instance a normally distributed random sample.  
 
 ```Julia
 using Random
 using Distributions
 
-Random.seed!(1234)
+Random.seed!(11)
 true_μ = 3                                                # "true" μ - to be inferred
 true_σ = 15                                               # "true" σ - to be inferred
 num_samples = 100                                         # dataset size
 y_obs = rand(Normal(true_mean, true_sigma), num_samples)  # our "observations"
 ```
-
+### Model
 Now, we need to define a **data-generating model**. In this example, quite obviously, we opt for a Gaussian model $\mathcal{N}(\mu,\sigma)$. The goal is to infer a posterior distribution for the parameters $\mu$ and $\sigma$ given the dataset `y_obs`. 
 
 ```Julia
@@ -40,6 +41,7 @@ end
 ```
 For a given parameter set $\theta = \left( \mu, \sigma \right)$, the model function generates a dataset of size `num_samples`.
 
+### Prior for model parameters
 We also need to define a **prior** distribution for the model parameters that are to be inferred. In this case we choose a `Uniform` distribution for both parameters.
 
 ```Julia
@@ -49,6 +51,7 @@ We also need to define a **prior** distribution for the model parameters that ar
 prior = product_distribution(Uniform(μ_min, μ_max), Uniform(σ_min, σ_max))
 ```
 
+### Summary statistics
 In general, the core of ABC algorithms consists in using the model as a forward simulator to generate a (large) amount of synthetic datasets, for different sets of model parameters. The latter are then accepted or rejected by measuring the discrepancy (or "distance", accoridng to some metric) between the observations and the model-generated data. However, an inference based on the direct comparison of observations and model-based data is not always feasible, e.g., in case of high dimensional datasets. In such cases, the discrepancy is measured by computing a distance between relevant summary statistics extracted from the datasets. In our toy example, we use the empirical mean and standard deviation of the data as **summary statistics**. 
 
 ```Julia
@@ -70,6 +73,7 @@ We can now reduce our "observations" to a (low-dimensional) set of summary stati
 ss_obs = sum_stats(y_obs)
 ```
 
+### Re-definition of the model
 The inference algorithm will compare observations and model outputs in terms of summary statistics. Therefore, we can reformulate the definition of the data-generating model in such a way that the data are directly compressed into a corresponding set of summary statistics.
 
 ```Julia
@@ -82,6 +86,7 @@ end
 ```
 Now, the `model` function returns a low-dimensional array of length `n_stats`.
 
+### Distance function
 Lastly, we need to define a **distance function**. The distance function MUST return an array containing the INDIVIDUAL distances, for EACH summary statistics, between observations and model outputs. In other words, given `n_stats` summary statistics, the distance function will ALWAYS return an array of length `n_stats`.  
 
 ```Julia
@@ -96,6 +101,7 @@ end
 
 The algorithm will keep track of the evolution of EACH individual distance (for EACH summary statistics), INDEPENDENTLY on the `type` of SABC algorithm used in the inference (see below for more details on the available options for algorithm `type`).
 
+### SABC inference
 The following functions have been implemented up to this point:
 1. `sum_stats` (reduces a high-dimensional dataset to a low-dimensional set of statistics) 
 2. `model` (given model parameters `θ`, generates a dataset and returns summary statistics)
@@ -111,7 +117,8 @@ np = 1000       # number of particles
 ns = 1_000_000  # number of particle updates
 ```
 
-Note that the total number of **population updates** is given by `n_pop_updates = div(ns, np)`.
+Note that the total number of **population updates** is given by `n_pop_updates = div(ns, np)`. Note also that the generation of the initial prior sample is counted as a population update step. Therefore, the total number of population updates after initialization will effectively be `n_pop_updates - 1`.  
+
 
 The `sabc` function requires two inputs:
 1. the distance function `f_dist`, which contains the data generating `model`,
@@ -154,6 +161,8 @@ out_hybrid = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, t
 display(out_hybrid)
 ```
 
+### Get SABC output
+
 We can now extract posterior populations as well as trajectories for ϵ's, ρ's (distances) and u's ("transformed" distances).
 
 ```Julia
@@ -188,10 +197,11 @@ The output files have the following dimensions:
 - ρ trajectories are always stored as individual trajectories for each summary statistics, even for algorithm of type 1, where a single ρ is effectively used for the inference.
 - Moreover, note that each trajectory has length `n_pop_updates + 1`. This is because also the distances of the prior sample, **before rescaling**, are stored as first element of the ρ array.     
 
-After analyzing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
+### To continue the inference 
+After analyzing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
 
 ```Julia
-out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
+out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
 ```
 
 One may also want to store the output file and decide whether to continue the inference at a later time. One way to save SABC output files is to use `serialize`. Here is an example.
@@ -211,6 +221,13 @@ To continue the inference one can proceed as follows.
 out_single_eps_1 = deserialize("[ouput path]/sabc_result_single_eps")
 out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
 ```
+
+### Results
+
+A sample from the true posterior can be easily obtained using the [AffineInvariantMCMC](https://github.com/madsjulia/AffineInvariantMCMC.jl) package. Here are the posterior samples after 2 million particle updates obtained with the three different SABC algortihms.
+
+<img width="496" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/ec9fac5b-5892-404f-a1a0-fe6d29f753dc">
+
 
 ## References
 
