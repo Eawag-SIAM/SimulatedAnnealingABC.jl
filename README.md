@@ -22,7 +22,7 @@ Let us start off by generating a synthetic dataset, our "observations". Consider
 using Random
 using Distributions
 
-Random.seed!(11)
+Random.seed!(1111)					  
 true_μ = 3                                                # "true" μ - to be inferred
 true_σ = 15                                               # "true" σ - to be inferred
 num_samples = 100                                         # dataset size
@@ -224,9 +224,68 @@ out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulat
 
 ### Results
 
-A sample from the true posterior can be easily obtained using the [AffineInvariantMCMC](https://github.com/madsjulia/AffineInvariantMCMC.jl) package. Here are the posterior samples after 2 million particle updates obtained with the three different SABC algortihms.
+A sample from the true posterior can be easily obtained using the [AffineInvariantMCMC](https://github.com/madsjulia/AffineInvariantMCMC.jl) package as follows.
 
-<img width="496" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/ec9fac5b-5892-404f-a1a0-fe6d29f753dc">
+```Julia
+using AffineInvariantMCMC
+
+# log-likelihood 
+llhood = θ -> begin
+	μ, σ  = θ;
+	return -num_samples*log(σ) - sum((y_obs.-μ).^2)/(2*σ^2)
+end
+
+# log-prior
+lprior = θ -> begin
+	μ, σ  = θ;
+	if (μ_min <= μ <= μ_max) && (σ_min <= σ <= σ_max)
+		return 0.0
+	else
+		return -Inf
+	end
+end
+
+# log-posterior
+lprob = θ -> begin
+	μ, σ  = θ;
+	lp = lprior(theta)
+	if isinf(lp) 
+		return -Inf
+	else
+		return lp + llhood(theta)
+	end
+end
+
+# Generate 1000 posterior samples
+numdims = 2
+numwalkers = 10
+thinning = 10
+numsamples_perwalker = 1000
+burnin = 1000;
+
+rng = MersenneTwister(11);
+theta0 = Array{Float64}(undef, numdims, numwalkers);
+theta0[1, :] = rand(rng, Uniform(μ_min, μ_max), numwalkers); 
+theta0[2, :] = rand(rng, Uniform(σ_min, σ_max), numwalkers); 
+
+chain, llhoodvals = runMCMCsample(lprob, numwalkers, theta0, burnin, 1);
+chain, llhoodvals = runMCMCsample(lprob, numwalkers, chain[:, :, end], numsamples_perwalker, thinning);
+flatchain, flatllhoodvals = flattenMCMCarray(chain, llhoodvals)
+
+# plot
+scatter(flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true posterior", xlims = (σ_min,σ_max), ylims = (μ_min,μ_max), xlabel = "std", ylabel = "mean")
+
+```
+
+<img width="257" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/98374cf2-1a97-4672-bcad-3371b0b69717">
+
+
+
+And here are the posterior samples after 2 million particle updates obtained with the three different SABC algortihms, compared to the true posterior.
+
+<img width="497" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/d120d36f-d13a-4c7b-ad16-baa90bf77e5e">
+
+
 
 
 ## References
