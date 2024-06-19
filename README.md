@@ -30,7 +30,7 @@ Random.seed!(1111)
 true_μ = 3                                                # "true" μ - to be inferred
 true_σ = 15                                               # "true" σ - to be inferred
 num_samples = 100                                         # dataset size
-y_obs = rand(Normal(true_mean, true_sigma), num_samples)  # our "observations"
+y_obs = rand(Normal(true_μ, true_σ), num_samples)         # our "observations"
 ```
 
 ### Model
@@ -61,7 +61,7 @@ prior = product_distribution(Uniform(μ_min, μ_max), Uniform(σ_min, σ_max))
 
 ### Summary statistics
 
-In general, the core of ABC algorithms consists in using the model as a forward simulator to generate a (large) amount of synthetic datasets, for different sets of model parameters. The latter are then accepted or rejected by measuring the discrepancy (or "distance", according to some metric) between the observations and the model-generated data. However, an inference based on the direct comparison of observations and model-based data is not always feasible, e.g., in case of high dimensional datasets. In such cases, the discrepancy is measured by computing a distance between relevant summary statistics extracted from the datasets. In our toy example, we use the empirical mean and standard deviation of the data as **summary statistics**.
+In general, the core of ABC algorithms consists in using the model as a forward simulator to generate a large number of synthetic datasets, for different sets of model parameters. The latter are then accepted or rejected by measuring the discrepancy (or "distance", according to some metric) between the observations and the model-generated data. However, an inference based on the direct comparison of observations and model-based data is not always feasible, e.g., in case of high dimensional datasets. In such cases, the discrepancy is measured by computing a distance between relevant summary statistics extracted from the datasets. In our toy example, we use the empirical mean and standard deviation of the data as **summary statistics**.
 
 ```Julia
 function sum_stats(data)
@@ -150,7 +150,7 @@ Additional arguments that can be passed to the function are the following.
   - `type=1` is single-ϵ.
   - `type=2` is multi-ϵ.
   - `type=3` is the hybrid multi-u-single-ϵ algorithm.
-- `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lenghty output files). Note that `n` population updates correspond to `n*n_particles` particle updates.    
+- `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lengthy output files). Note that `n` population updates correspond to `n*n_particles` particle updates.    
 
 The following arguments rarely require adjustments.
 
@@ -166,11 +166,11 @@ using SimulatedAnnealingABC
 
 # --- TYPE 1 -> single-ϵ ---
 out_single_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 1)
-display(out_singeps)
+display(out_single_eps)
 
 # --- TYPE 2 -> multi-ϵ ---
 out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 10.0, type = 2)
-display(out_multeps)
+display(out_multi_eps)
 
 # --- TYPE 3 -> hybrid multi-u-single-ϵ ---
 out_hybrid = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 3)
@@ -216,13 +216,13 @@ The output files have the following dimensions:
 
 ### To continue the inference 
 
-After analyzing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
+After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
 
 ```Julia
 out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
 ```
 
-One may also want to store the output file and decide whether to continue the inference at a later time. One way to save SABC output files is to use `serialize`. Here is an example.
+One may also want to store the output file and decide whether to continue the inference later. One way to save SABC output files is to use `serialize`. Here is an example.
 
 ```Julia
 using Serialization
