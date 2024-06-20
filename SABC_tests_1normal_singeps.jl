@@ -104,12 +104,10 @@ flatchain, flatllhoodvals = flattenMCMCarray(chain, llhoodvals)
 ### Wanna plot the true posterior ?
 ### Run this!
 ########################################################################################
-P_scatter_1 = scatter(xlims = (σ_min,σ_max), ylims = (μ_min,μ_max), title = "1d Normal - True posterior",
+P_scatter = scatter(xlims = (σ_min,σ_max), ylims = (μ_min,μ_max), title = "1d Normal - True posterior",
 					xlabel = "std", ylabel = "mean")
-scatter!(P_scatter_1, flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true posterior")
-P_scatter_2 = scatter(xlims = (σ_min,σ_max), ylims = (μ_min,μ_max), xlabel = "std")
-scatter!(P_scatter_2, flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true posterior")
-display(plot(P_scatter_1, P_scatter_2, layout = (1, 2)))
+scatter!(P_scatter, flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true posterior")
+display(P_scatter)
 ########################################################################################
 
 ########################################################################################
@@ -181,7 +179,7 @@ display(P_hist_sd)
 P_scatter_1 = scatter(xlims = (σ_min, σ_max), ylims = (μ_min,μ_max), title = "1d Normal - 2 stats",
 					xlabel = "std", ylabel = "mean")
 scatter!(P_scatter_1, flatchain[2,:], flatchain[1,:], markercolor = :yellow, label=" true post ")
-scatter!(P_scatter_1, pop_singeps[2,:], pop_singeps[1,:], markercolor = :green, label=" single-ϵ ")
+scatter!(P_scatter_1, pop_singeps[2,:], pop_singeps[1,:], markercolor = :green, label=" SABC ")
 display(P_scatter_1)
 
 # --- Plot epsilons ---
@@ -361,7 +359,7 @@ display(P_hist_sd)
 P_scatter_1 = scatter(xlims = (σ_min,σ_max), ylims = (μ_min,μ_max), title = "1d Normal - 3 stats with noise",
 					xlabel = "std", ylabel = "mean")
 scatter!(P_scatter_1, flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true post")
-scatter!(P_scatter_1, pop_singeps[2,:], pop_singeps[1,:], markercolor = :green, label="single eps")
+scatter!(P_scatter_1, pop_singeps[2,:], pop_singeps[1,:], markercolor = :green, label="SABC")
 display(P_scatter_1)
 
 # --- Plot epsilons ---
