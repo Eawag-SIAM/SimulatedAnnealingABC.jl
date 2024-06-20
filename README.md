@@ -112,7 +112,11 @@ function f_dist(θ)
 end
 ```
 
-The algorithm will keep track of the evolution of EACH individual distance (for EACH summary statistics), INDEPENDENTLY on the `type` of SABC algorithm used in the inference (see below for more details on the available options for algorithm `type`).
+In this way, the algorithm will keep track of the evolution of EACH individual distance (for EACH summary statistics), although the SABC algorithm effectively uses only one distance given by the square root of the sum of the squared individual distances:
+
+```Julia
+sqrt(sum(f_dist(θ).^2))
+```
 
 ### SABC inference
 
@@ -143,13 +147,7 @@ Additional arguments that can be passed to the function are the following.
 
 - `n_particles`: number of particles used in the inference.
 - `n_simulation`: total number of particle updates.
-- `v`: annealing speed. Recommended values are: 
-  - `v=1` for single-ϵ algorithms (type 1 and 3).
-  - `v=10` for multi-ϵ (type 2).
-- `type`: to choose the specific SABC algorithm.
-  - `type=1` is single-ϵ.
-  - `type=2` is multi-ϵ.
-  - `type=3` is the hybrid multi-u-single-ϵ algorithm.
+- `v`: annealing speed. Recommended value is `v=1`.
 - `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lengthy output files). Note that `n` population updates correspond to `n*n_particles` particle updates.    
 
 The following arguments rarely require adjustments.
@@ -159,27 +157,19 @@ The following arguments rarely require adjustments.
 - `δ`: tuning hyperparameter governing the size of population resampling. Default value is `δ=0.1`.
 - `checkpoint_history`: every how many population updates information on the inference progress is stored for postprocessing. Default value is `1`.
 
-We will run the three different algorithms (`type = 1,2,3`) and compare their outputs.
+Let us run the inference:
 
 ```Julia
 using SimulatedAnnealingABC
 
-# --- TYPE 1 -> single-ϵ ---
-out_single_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 1)
+out_single_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0)
 display(out_single_eps)
 
-# --- TYPE 2 -> multi-ϵ ---
-out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 10.0, type = 2)
-display(out_multi_eps)
-
-# --- TYPE 3 -> hybrid multi-u-single-ϵ ---
-out_hybrid = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 3)
-display(out_hybrid)
 ```
 
 ### Get SABC output
 
-We can now extract posterior populations as well as trajectories for ϵ's, ρ's (distances) and u's ("transformed" distances).
+We can now extract posterior population as well as trajectories for ϵ's, ρ's (distances) and u's ("transformed" distances).
 
 ```Julia
 pop_singeps = hcat(out_single_eps.population...)
@@ -187,39 +177,26 @@ eps_singeps = hcat(out_single_eps.state.ϵ_history...)
 rho_singeps = hcat(out_single_eps.state.ρ_history...)
 u_singeps = hcat(out_single_eps.state.u_history...)
 
-pop_multeps = hcat(out_multi_eps.population...)
-eps_multeps = hcat(out_multi_eps.state.ϵ_history...)
-rho_multeps = hcat(out_multi_eps.state.ρ_history...)
-u_multeps = hcat(out_multi_eps.state.u_history...)
-
-pop_hybrid = hcat(out_hybrid.population...)
-eps_hybrid = hcat(out_hybrid.state.ϵ_history...)
-rho_hybrid = hcat(out_hybrid.state.ρ_history...)
-u_hybrid = hcat(out_hybrid.state.u_history...)
 ```
 
 The output files have the following dimensions:
 
 - **populations**: `(n_stats, np)`
-- **ϵ trajectories**:
-  - `(1, n_pop_updates)`  for single-ϵ algorithms (type 1 and 3)
-  - `(n_stats, n_pop_updates)` for multi-ϵ (type 2)
+- **ϵ trajectories**: `(1, n_pop_updates)`
 - **ρ trajectories**: `(n_stats, n_pop_updates + 1)`
-- **u trajectories**:
-  - `(1, n_pop_updates)`  for type 1 algorithm 
-  - `(n_stats, n_pop_updates)` for types 2 and 3
+- **u trajectories**: `(1, n_pop_updates)`
 
 **Remarks about ρ trajectories**:
 
-- ρ trajectories are always stored as individual trajectories for each summary statistics, even for algorithm of type 1, where a single ρ is effectively used for the inference.
+- ρ trajectories are always stored as individual trajectories for each summary statistics, even if a single ρ is effectively used for the inference.
 - Moreover, note that each trajectory has length `n_pop_updates + 1`. This is because also the distances of the prior sample, **before rescaling**, are stored as first element of the ρ array.
 
 ### To continue the inference 
 
-After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
+After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`.
 
 ```Julia
-out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
+out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0)
 ```
 
 One may also want to store the output file and decide whether to continue the inference later. One way to save SABC output files is to use `serialize`. Here is an example.
@@ -237,7 +214,7 @@ To continue the inference one can proceed as follows.
 ```Julia
 # replace [output path] with appropriate path
 out_single_eps_1 = deserialize("[output path]/sabc_result_single_eps")
-out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
+out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulation = 1_000_000, v = 1.0)
 ```
 
 ### Results
@@ -295,13 +272,11 @@ scatter(flatchain[2,:], flatchain[1,:], markercolor = :yellow, label="true poste
 
 ```
 
-<img width="257" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/98374cf2-1a97-4672-bcad-3371b0b69717">
+<img width="497" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/8c01d837-6144-457c-95a1-0629ac8c4e17">
 
-And here are the posterior samples after 2 million particle updates obtained with the three different SABC algorithms, compared to the true posterior.
+The plot area corresponds to the prior range. Here is the posterior sample after 2 million particle updates obtained with the SABC algorithm, compared to the true posterior.
 
-<img width="497" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/d120d36f-d13a-4c7b-ad16-baa90bf77e5e">
-
-
+<img width="497" alt="image" src="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/assets/9136326/3083a9ee-eac1-43d9-a99e-1fefa8168b03">
 
 
 ## References
