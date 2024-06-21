@@ -2,7 +2,6 @@ using Random
 using Distributions
 using Distances
 using SimulatedAnnealingABC
-# using Pkg
 using Plots
 
 # Function to sample from the mixture of two Gaussians
@@ -65,7 +64,7 @@ sigma = 0.3
 prior = Uniform(-10,10)
 
 np = 1000       # number of particles
-ns = 1_000_000  # number of particle updates
+ns = 3_000_000  # number of particle updates
 
 # synthetic data and summary stats:
 # yobs = sample_mixture(Normal(param_true,1),Normal(-param_true,sigma),mixing_coeff,2)
@@ -88,11 +87,11 @@ data = out_single_eps.state.ρ_history
 matrix_data_single = hcat(data...)'  # Transpose after concatenation to get 1000x10
 
 # --- TYPE 2 -> multi-ϵ ---
-out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 2)
+out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 0.01, type = 2)
 data = out_multi_eps.state.ρ_history
 matrix_data_multi = hcat(data...)'  # Transpose after concatenation to get 1000x10
 
-out_multi_eps = update_population!(out_multi_eps, f_dist, prior; n_simulation = ns, v = 10.0, type = 2)
+out_multi_eps = update_population!(out_multi_eps, f_dist, prior; n_simulation = ns, v = 0.01, type = 2)
 data = out_multi_eps.state.ρ_history
 matrix_data_multi = hcat(data...)'  # Transpose after concatenation to get 1000x10
 
@@ -112,6 +111,6 @@ plot!(plot1,1:iter, matrix_data_hybrid, yscale=:log10, color="green")
 
 
 hist1=histogram(out_single_eps.population,bins=100,color="red")
-histogram!(hist1,out_multi_eps.population,bins=100,color="blue")
 histogram!(hist1,out_hybrid.population,bins=100,color="green")
+histogram!(hist1,out_multi_eps.population,bins=100,color="blue")
 histogram!(hist1,samples,bins=100,color="yellow")
