@@ -219,8 +219,10 @@ The output files have the following dimensions:
 After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
 
 ```Julia
-out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
+update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
 ```
+
+The original output file `out_single_eps` will be updated with the additional `ns` simulations.
 
 One may also want to store the output file and decide whether to continue the inference later. One way to save SABC output files is to use `serialize`. Here is an example.
 
@@ -236,8 +238,8 @@ To continue the inference one can proceed as follows.
 
 ```Julia
 # replace [output path] with appropriate path
-out_single_eps_1 = deserialize("[output path]/sabc_result_single_eps")
-out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
+out_single_eps = deserialize("[output path]/sabc_result_single_eps")
+update_population!(out_single_eps, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
 ```
 
 ### Results
