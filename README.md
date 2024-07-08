@@ -144,12 +144,12 @@ Additional arguments that can be passed to the function are the following.
 - `n_particles`: number of particles used in the inference.
 - `n_simulation`: total number of particle updates.
 - `v`: annealing speed. Recommended values are: 
-  - `v=1` for single-ϵ algorithms (type 1 and 3).
-  - `v=10` for multi-ϵ (type 2).
+  - `v=1` for single-ϵ algorithms (type "single" and "hybrid", default value).
+  - `v=10` for multi-ϵ (type "multi").
 - `type`: to choose the specific SABC algorithm.
-  - `type=1` is single-ϵ.
-  - `type=2` is multi-ϵ.
-  - `type=3` is the hybrid multi-u-single-ϵ algorithm.
+  - `type="single"` is single-ϵ.
+  - `type="multi"` is multi-ϵ.
+  - `type="hybrid"` is the hybrid multi-u-single-ϵ algorithm.
 - `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lengthy output files). Note that `n` population updates correspond to `n*n_particles` particle updates.    
 
 The following arguments rarely require adjustments.
@@ -159,21 +159,21 @@ The following arguments rarely require adjustments.
 - `δ`: tuning hyperparameter governing the size of population resampling. Default value is `δ=0.1`.
 - `checkpoint_history`: every how many population updates information on the inference progress is stored for postprocessing. Default value is `1`.
 
-We will run the three different algorithms (`type = 1,2,3`) and compare their outputs.
+We will run the three different algorithms (`type = "single","multi","hybrid"`) and compare their outputs.
 
 ```Julia
 using SimulatedAnnealingABC
 
 # --- TYPE 1 -> single-ϵ ---
-out_single_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 1)
+out_single_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = "single")
 display(out_single_eps)
 
 # --- TYPE 2 -> multi-ϵ ---
-out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 10.0, type = 2)
+out_multi_eps = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 10.0, type = "multi")
 display(out_multi_eps)
 
 # --- TYPE 3 -> hybrid multi-u-single-ϵ ---
-out_hybrid = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = 3)
+out_hybrid = sabc(f_dist, prior; n_particles = np, n_simulation = ns, v = 1.0, type = "hybrid")
 display(out_hybrid)
 ```
 
@@ -202,27 +202,25 @@ The output files have the following dimensions:
 
 - **populations**: `(n_stats, np)`
 - **ϵ trajectories**:
-  - `(1, n_pop_updates)`  for single-ϵ algorithms (type 1 and 3)
-  - `(n_stats, n_pop_updates)` for multi-ϵ (type 2)
+  - `(1, n_pop_updates)`  for single-ϵ algorithms (type "single" and "hybrid")
+  - `(n_stats, n_pop_updates)` for multi-ϵ (type "multi")
 - **ρ trajectories**: `(n_stats, n_pop_updates + 1)`
 - **u trajectories**:
-  - `(1, n_pop_updates)`  for type 1 algorithm 
-  - `(n_stats, n_pop_updates)` for types 2 and 3
+  - `(1, n_pop_updates)`  for type "single"
+  - `(n_stats, n_pop_updates)` for types "multi" and "hybrid"
 
 **Remarks about ρ trajectories**:
 
-- ρ trajectories are always stored as individual trajectories for each summary statistics, even for algorithm of type 1, where a single ρ is effectively used for the inference.
+- ρ trajectories are always stored as individual trajectories for each summary statistics, even for algorithm of type "single", where a single ρ is effectively used for the inference.
 - Moreover, note that each trajectory has length `n_pop_updates + 1`. This is because also the distances of the prior sample, **before rescaling**, are stored as first element of the ρ array.
 
 ### To continue the inference 
 
-After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type 1). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
+After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type "single"). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
 
 ```Julia
-update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = 1)
+out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = "single")
 ```
-
-The original output file `out_single_eps` will be updated with the additional `ns` simulations.
 
 One may also want to store the output file and decide whether to continue the inference later. One way to save SABC output files is to use `serialize`. Here is an example.
 
@@ -238,8 +236,8 @@ To continue the inference one can proceed as follows.
 
 ```Julia
 # replace [output path] with appropriate path
-out_single_eps = deserialize("[output path]/sabc_result_single_eps")
-update_population!(out_single_eps, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = 1)
+out_single_eps_1 = deserialize("[output path]/sabc_result_single_eps")
+out_single_eps_2 = update_population!(out_single_eps_1, f_dist, prior; n_simulation = 1_000_000, v = 1.0, type = "single")
 ```
 
 ### Results
