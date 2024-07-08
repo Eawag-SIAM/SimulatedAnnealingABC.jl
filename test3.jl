@@ -13,7 +13,7 @@ function f_dist(param)
     y_others = rand(Normal(0, 1), 9)
     s_others = abs.(y_others)
 
-    return vcat(s,s_others)
+    return [[s]; s_others]
 end
 
 function posterior_sample(n_samples=1000)

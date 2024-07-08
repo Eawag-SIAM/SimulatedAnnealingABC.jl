@@ -87,7 +87,7 @@ end
 """
 Update ϵ
 Single-epsilon: see eq(31) in Albert et al., Statistics and Computing 25, 2015
-Multi-epsilon: new update rule
+Multi-epsilon:  new update rule
 """
 function update_epsilon(u, ui, v, n)
     mean_u = mean(u, dims=1)
@@ -99,7 +99,7 @@ function update_epsilon(u, ui, v, n)
         q = mean_u / mean_ui
         cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
         num = 1 + sum(q.^(n/2))
-        den = cn*(n+1)*mean_ui^(1+n/2)*prod(q.^2)
+        den = cn*(n+1)*mean_ui^(1+n/2)*prod(q)
         βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
         ϵ_new = 1/(βi + v*num/den)      
     elseif n == 1  # one stat
@@ -161,9 +161,10 @@ dist_euclidean(d) = sqrt(sum(d.^2))
 ## Arguments
 See docs for `sabc`
 
-type = 1 -> original single epsilon
-type = 2 -> multi epsilon
-type = 3 -> hybrid multiu-single-epsilon
+Algorithm version, specified with argument 'type'
+"single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
+"multi"  -> Multi-ρ multi-u multi-ϵ SABC
+"hybrid" -> Multi-ρ multi-u SINGLE-ϵ SABC
 
 ## Value
 
@@ -174,24 +175,24 @@ type = 3 -> hybrid multiu-single-epsilon
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.2, β = 0.8, δ= 0.1, type = 1, kwargs...)
+                        v = 1.0, β = 0.8, δ= 0.1, type = "single", kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
     # ------------------------------------ #
     ############ Algorithm type ############
-    # 1: original single-epsilon
-    # 2: multi-epsilon
-    # 3: hybrid multi-u-single-epsilon 
-    if type == 1
-        @info "Preparing to run SABC algorithm: 'single-epsilon'"
-    elseif type == 2
-        @info "Preparing to run SABC algorithm: 'multi-epsilon'"
-    elseif type == 3
-        @info "Preparing to run SABC algorithm: 'hybrid multi-u-single-epsilon'"
+    # "single": original single-ϵ
+    # "multi":  multi-ϵ
+    # "hybrid": hybrid multi-u-single-ϵ 
+    if type == "single"
+        @info "Preparing to run SABC algorithm: 'single-ϵ'"
+    elseif type == "multi"
+        @info "Preparing to run SABC algorithm: 'multi-ϵ'"
+    elseif type == "hybrid"
+        @info "Preparing to run SABC algorithm: 'hybrid multi-u-single-ϵ'"
     else
-        error("Keyword type = $type not valid. Select type = 1, 2 or 3.")
+        error("Keyword type = $type not valid. Select type = 'single', 'multi' or 'hybrid'.")
     end
 
     # --------------------------------------------- #
@@ -213,7 +214,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_stats = length(ρinit)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-    if type == 1
+    if type == "single"
         distances_prior_single = Array{eltype(ρinit)}(undef, n_particles, 1)
     end
     population = Vector{typeof(θ)}(undef, n_particles)
@@ -247,7 +248,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # IMPORTANT! 
     # One more thing: 
     # algorithm of type 1 (single-epsilon) needs single distance
-    if type == 1
+    if type == "single"
         for ix in 1:n_particles
             distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
         end
@@ -257,7 +258,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ############ Learn cdf and compute ϵ ############
     # Estimate cdf of ρ under the prior
     any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
-    if type == 1
+    if type == "single"
         cdfs_dist_prior = build_cdf(distances_prior_single)
         u = similar(distances_prior_single)
         for i in 1:n_particles
@@ -276,10 +277,10 @@ function initialization(f_dist, prior::Distribution, args...;
     population, u, ess = resample_population(population, u, δ)
     @info "Initial resampling (δ = $δ) - ESS = $ess "  # ESS = Effective sample size
     # now, intial epsilon
-    if type == 1 || type == 2
+    if type == "single" || type == "multi"
         # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
         ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
-    elseif type == 3
+    elseif type == "hybrid"
         u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
         ϵ = [update_epsilon(u_average, 1, v, 1)] 
     end
@@ -320,15 +321,16 @@ Modifies `population_state`.
 ## Arguments
 See `sabc`
 
-type = 1 -> original single epsilon
-type = 2 -> multi epsilon
-type = 3 -> hybrid multiu-single-epsilon
+Algorithm version, specified with argument 'type'
+"single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
+"multi"  -> Multi-ρ multi-u multi-ϵ SABC
+"hybrid" -> Multi-ρ multi-u SINGLE-ϵ SABC
 """
 
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
-                            v=1.2, β=0.8, δ=0.1,
-                            type = 1, 
+                            v=1.0, β=0.8, δ=0.1,
+                            type = "single", 
                             resample=2*length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
@@ -375,7 +377,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
                     ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
-                    if type == 1
+                    if type == "single"
                         ρ_proposal_single = dist_euclidean(ρ_proposal)
                         u_proposal = cdfs_dist_prior(ρ_proposal_single)
                     else
@@ -415,7 +417,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                     # acceptance probability
                     if pdf(prior, θproposal) > 0
                         ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
-                        if type == 1
+                        if type == "single"
                             ρ_proposal_single = dist_euclidean(ρ_proposal)
                             u_proposal = cdfs_dist_prior(ρ_proposal_single)
                         else
@@ -445,10 +447,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         ############ Update epsilon and jump distribution ############
         Σ_jump = estimate_jump_covariance(population, β)
 
-        if type == 1 || type == 2
+        if type == "single" || type == "multi"
             # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
             ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
-        elseif type == 3
+        elseif type == "hybrid"
             u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
             ϵ = [update_epsilon(u_average, 1, v, 1)] 
         end
@@ -459,10 +461,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
-            if type == 1 || type == 2
+            if type == "single" || type == "multi"
                 # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
                 ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
-            elseif type == 3
+            elseif type == "hybrid"
                 u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
                 ϵ = [update_epsilon(u_average, 1, v, 1)] 
             end
@@ -525,9 +527,9 @@ end
 ```
 sabc(f_dist, prior::Distribition, args...;
         n_particles = 100, n_simulation = 10_000,
-        type = 1,
+        type = "single",
         resample = 2*n_particles,
-        v=1.2, β=0.8, δ=0.1,
+        v=1.0, β=0.8, δ=0.1,
         kwargs...)
 
 ```
@@ -539,12 +541,12 @@ sabc(f_dist, prior::Distribition, args...;
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
-- `v=1.2`: Tuning parameter for XXX
+- `v=1.0`: Tuning parameter for XXX
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
-- type = 1 -> original single epsilon
-       = 2 -> multi epsilon
-       = 3 -> hybrid multiu-single-epsilon
+- type = "single" -> original single-ϵ
+       = "multi"  -> multi-ϵ
+       = "hybrid" -> hybrid multi-u-single-ϵ
 - `resample`: After how many accepted updates?
 - `kwargs...`: Further arguments passed to `f_dist``
 
@@ -553,9 +555,9 @@ sabc(f_dist, prior::Distribition, args...;
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              type = 1,
+              type = "single",
               resample = 2*n_particles,
-              v=1.2, β=0.8, δ=0.1,
+              v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
               checkpoint_display = 100,
               kwargs...)
