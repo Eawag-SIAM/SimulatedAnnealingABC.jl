@@ -9,7 +9,6 @@ using StatsBase: mean, cov, sample, weights
 
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
-# import ProgressMeter
 
 using Dates
 using FLoops
@@ -119,14 +118,14 @@ function resample_population(population, u, δ)
     n = length(population)
     u_means = mean(u, dims=1)
     w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
+    # Choose indexes based on weights w
     idx_resampled = sample(1:n, weights(w), n, replace=true)
-    
+    # Apply selected indexes to population and u's
     population = population[idx_resampled]
     u = u[idx_resampled,:]
-    
     # Effective sample size:
     ess = (sum(w))^2/sum(w.^2) 
-
+    # Return:
     population, u, ess
 end
 
@@ -137,7 +136,6 @@ Estimate the coavariance for the jump distributions from a population
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-15*I
 end
-
 
 """
 Proposal for n-dimensions, n > 1
@@ -231,7 +229,7 @@ function initialization(f_dist, prior::Distribution, args...;
         distances_prior[i,:] .= ρinit
     end
     # Keep track of the original prior distances (before rescaling)
-    # We save all individual distances also for algorithm of type 1 (single-epsilon)
+    # We save all individual distances also for single-epsilon algorithm
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
     # ---------------------------------------- #
@@ -247,7 +245,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # IMPORTANT! 
     # One more thing: 
-    # algorithm of type 1 (single-epsilon) needs single distance
+    # algorithm of type single-epsilon needs single distance
     if type == "single"
         for ix in 1:n_particles
             distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
@@ -296,7 +294,6 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
                                 # and neglect the first call to f_dist ('initialization of containers')  
 
-
     state = SABCstate(ϵ,
                       dist_rescale,
                       ϵ_history,
@@ -321,10 +318,13 @@ Modifies `population_state`.
 ## Arguments
 See `sabc`
 
-Algorithm version, specified with argument 'type'
+Algorithm version, specified with argument `type`
 "single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
 "multi"  -> Multi-ρ multi-u multi-ϵ SABC
 "hybrid" -> Multi-ρ multi-u SINGLE-ϵ SABC
+
+`checkpoint_history`: every how many population updates distances and epsilons are stored 
+`checkpoint_display`: every how many population updates algortihm state is displayed 
 """
 
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
@@ -448,7 +448,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
 
         if type == "single" || type == "multi"
-            # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
+            # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
             ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
         elseif type == "hybrid"
             u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
@@ -462,7 +462,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
             if type == "single" || type == "multi"
-                # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
+                # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
                 ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
             elseif type == "hybrid"
                 u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
@@ -548,6 +548,8 @@ sabc(f_dist, prior::Distribition, args...;
        = "multi"  -> multi-ϵ
        = "hybrid" -> hybrid multi-u-single-ϵ
 - `resample`: After how many accepted updates?
+- `checkpoint_history`: every how many population updates distances and epsilons are stored 
+- `checkpoint_display`: every how many population updates algortihm state is displayed 
 - `kwargs...`: Further arguments passed to `f_dist``
 
 ## Return
