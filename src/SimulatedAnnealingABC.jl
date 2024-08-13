@@ -13,8 +13,6 @@ import Roots
 using Dates
 using FLoops
 using FoldsThreads
-using ThreadPinning
-ThreadPinning.Prefs.set_os_warning(false)
 
 include("cdf_estimators.jl")
 
@@ -31,7 +29,7 @@ mutable struct SABCstate
     dist_rescale::Vector{Float64}  # vector for rescaling distances
 
     # Containers to store trajectories
-    ϵ_history::Vector{Vector{Float64}} 
+    ϵ_history::Vector{Vector{Float64}}
     ρ_history::Vector{Vector{Float64}}
     u_history::Vector{Vector{Float64}}
 
@@ -100,10 +98,10 @@ function update_epsilon(u, ui, v, n)
         num = 1 + sum(q.^(n/2))
         den = cn*(n+1)*mean_ui^(1+n/2)*prod(q)
         βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
-        ϵ_new = 1/(βi + v*num/den)      
+        ϵ_new = 1/(βi + v*num/den)
     elseif n == 1  # one stat
         ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
-    else 
+    else
         error("Inconsistency - number of statistics = $n should be >= 1")
     end
     ϵ_new
@@ -124,14 +122,14 @@ function resample_population(population, u, δ)
     population = population[idx_resampled]
     u = u[idx_resampled,:]
     # Effective sample size:
-    ess = (sum(w))^2/sum(w.^2) 
+    ess = (sum(w))^2/sum(abs2, w)
     # Return:
     population, u, ess
 end
 
 
 """
-Estimate the coavariance for the jump distributions from a population
+Estimate the covariance for the jump distributions from a population
 """
 function estimate_jump_covariance(population, β)
     β * cov(stack(population, dims=1)) + 1e-15*I
@@ -150,7 +148,7 @@ proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 """
 Distance
 """
-dist_euclidean(d) = sqrt(sum(d.^2))
+dist_euclidean(d) = sqrt(sum(abs2, d))
 
 
 """
@@ -182,7 +180,7 @@ function initialization(f_dist, prior::Distribution, args...;
     ############ Algorithm type ############
     # "single": original single-ϵ
     # "multi":  multi-ϵ
-    # "hybrid": hybrid multi-u-single-ϵ 
+    # "hybrid": hybrid multi-u-single-ϵ
     if type == "single"
         @info "Preparing to run SABC algorithm: 'single-ϵ'"
     elseif type == "multi"
@@ -193,22 +191,10 @@ function initialization(f_dist, prior::Distribution, args...;
         error("Keyword type = $type not valid. Select type = 'single', 'multi' or 'hybrid'.")
     end
 
-    # --------------------------------------------- #
-    ############ Check available threads ############
-    @info "Using threads: $(Threads.nthreads()) "; flush(stderr)
-    if Threads.nthreads() > 1
-        BLAS.set_num_threads(1)
-        @info "Set BLAS threads = $(LinearAlgebra.BLAS.get_num_threads()) "; flush(stderr)
-        if Sys.islinux()
-            @info "Set 'pinthreads(:cores)' for optimal multi-threading performance"; flush(stderr)
-            pinthreads(:cores)
-        end
-    end
-    
     # ------------------------------------------- #
     ############ Initialize containers ############
     θ = rand(prior)  # random sample
-    ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers 
+    ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers
     n_stats = length(ρinit)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
@@ -219,7 +205,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # ---------------------------------------- #
     ############ Build prior sample ############
-    @info "Initializing population..."; flush(stderr)
+    @info "Initializing population..."
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
@@ -243,8 +229,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # and store in history
     push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
 
-    # IMPORTANT! 
-    # One more thing: 
+    # IMPORTANT!
     # algorithm of type single-epsilon needs single distance
     if type == "single"
         for ix in 1:n_particles
@@ -269,30 +254,30 @@ function initialization(f_dist, prior::Distribution, args...;
         for i in 1:n_particles
             u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
         end
-    end 
-    
+    end
+
     # resampling before setting intial epsilon
     population, u, ess = resample_population(population, u, δ)
     @info "Initial resampling (δ = $δ) - ESS = $ess "  # ESS = Effective sample size
     # now, intial epsilon
     if type == "single" || type == "multi"
-        # size(u,2) = 1 when type = 1, and size(u,2) = n_stats when type = 2
-        ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+        # size(u,2) = 1 when type = 1, and size(u,2) = _nstats when type = 2
+        ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
     elseif type == "hybrid"
-        u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-        ϵ = [update_epsilon(u_average, 1, v, 1)] 
+        u_average = sum(u[:,ix] for ix in 1:n_stats) ./ n_stats
+        ϵ = [update_epsilon(u_average, 1, v, 1)]
     end
-    
+
     # store
     u_history = [[mean(ic) for ic in eachcol(u)]]
-    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing 
+    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing
 
     Σ_jump = estimate_jump_covariance(population, β)
 
     # -------------------------------------------------------------------- #
     ############ Collect parameters and states of the algorithm ############
-    n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior 
-                                # and neglect the first call to f_dist ('initialization of containers')  
+    n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior
+                                # and neglect the first call to f_dist ('initialization of containers')
 
     state = SABCstate(ϵ,
                       dist_rescale,
@@ -304,15 +289,15 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0, 1)  # n_accept set to 0, n_resampling to 1
 
-    @info "Population with $n_particles particles initialised."; flush(stderr)
-    @info "Initial ϵ = $ϵ"; flush(stderr)
+    @info "Population with $n_particles particles initialised."
+    @info "Initial ϵ = $ϵ"
     return SABCresult(population, u, distances_prior_rescaled, state)
 
 end
 
 
 """
-Updates particles and applies importance sampling if needed. 
+Updates particles and applies importance sampling if needed.
 Modifies `population_state`.
 
 ## Arguments
@@ -321,29 +306,29 @@ See `sabc`
 Algorithm version, specified with argument `type`
 "single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
 "multi"  -> Multi-ρ multi-u multi-ϵ SABC
-"hybrid" -> Multi-ρ multi-u SINGLE-ϵ SABC
+"hybrid" -> Multi-ρ multi-u single-ϵ SABC
 
-`checkpoint_history`: every how many population updates distances and epsilons are stored 
-`checkpoint_display`: every how many population updates algortihm state is displayed 
+`checkpoint_history`: every how many population updates distances and epsilons are stored
+`checkpoint_display`: every how many population updates algortihm state is displayed
 """
 
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.0, β=0.8, δ=0.1,
-                            type = "single", 
-                            resample=2*length(population_state.population),
+                            type = "single",
+                            resample = 2*length(population_state.population),
                             checkpoint_history = 1,
                             checkpoint_display = 100,
                             kwargs...)
-    
+
     state = population_state.state
     population = copy(population_state.population)
     u = copy(population_state.u)
     ρ = copy(population_state.ρ)
     n_stats = size(u,2)
 
-    @unpack ϵ, dist_rescale, ϵ_history, ρ_history, 
-            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state  
+    @unpack ϵ, dist_rescale, ϵ_history, ρ_history,
+            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
     n_particles = length(population)
 
     n_population_updates = n_simulation ÷ n_particles  # populations update = total simulations / particles
@@ -354,94 +339,94 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     inter = 0  # to estimate ETA
     if Threads.nthreads() > 1  # set basesize for parallel for loop
         # nthreads -> number of available cores
-        # basesize = n_particles/nthreads -> size of the chunk assigned to each core 
+        # basesize = n_particles/nthreads -> size of the chunk assigned to each core
         bs = ceil(Int,n_particles/Threads.nthreads())
     end
-    @info "$(now) -- Starting population updates."; flush(stderr)
-    
+    @info "$(now) -- Starting population updates."
+
 
     # ---------------------------------------------------- #
     ############ Main loop (population updates) ############
     for ix in 1:n_population_updates
 
-        if Threads.nthreads() == 1
+        # if Threads.nthreads() == 1
 
-            # ---------------------------------------------------- #
-            # -- Update all particles - Single-threaded -- #
-            # ---------------------------------------------------- #
-            for i in eachindex(population)
+        # ---------------------------------------------------- #
+        # -- Update all particles - Single-threaded -- #
+        # ---------------------------------------------------- #
+        for i in eachindex(population)
 
-                # proposal
-                θproposal = proposal(population[i], Σ_jump)
+            # proposal
+            θproposal = proposal(population[i], Σ_jump)
 
-                # acceptance probability
-                if pdf(prior, θproposal) > 0
-                    ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
-                    if type == "single"
-                        ρ_proposal_single = dist_euclidean(ρ_proposal)
-                        u_proposal = cdfs_dist_prior(ρ_proposal_single)
-                    else
-                        u_proposal = cdfs_dist_prior(ρ_proposal)
-                    end
-
-                    accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                        exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+            # acceptance probability
+            if pdf(prior, θproposal) > 0
+                ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
+                if type == "single"
+                    ρ_proposal_single = dist_euclidean(ρ_proposal)
+                    u_proposal = cdfs_dist_prior(ρ_proposal_single)
                 else
-                    accept_prob = 0.0
+                    u_proposal = cdfs_dist_prior(ρ_proposal)
                 end
 
-                if rand() < accept_prob
-                    population[i] = θproposal
-                    u[i,:] .= u_proposal 
-                    ρ[i,:] .= ρ_proposal
-                    n_accept += 1
-                end
-
+                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+            else
+                accept_prob = 0.0
             end
-            # ---------------------------------------------------- #
 
-        elseif Threads.nthreads() > 1
-
-            # ---------------------------------------------------- #
-            # -- Update all particles - Multi-threaded -- #
-            # ---------------------------------------------------- #
-            # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-            let Σ_jump = Σ_jump, ϵ = ϵ, flooccept::Int = 0
-                rpopulation = Ref(population)
-                ru = Ref(u)
-                rρ = Ref(ρ)
-                @floop ThreadedEx(basesize = bs) for i in eachindex(population)
-                    # proposal
-                    @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
-
-                    # acceptance probability
-                    if pdf(prior, θproposal) > 0
-                        ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
-                        if type == "single"
-                            ρ_proposal_single = dist_euclidean(ρ_proposal)
-                            u_proposal = cdfs_dist_prior(ρ_proposal_single)
-                        else
-                            u_proposal = cdfs_dist_prior(ρ_proposal)
-                        end
-                        @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
-                                                exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
-                    else
-                        accept_prob = 0.0
-                    end
-
-                    if rand() < accept_prob
-                        @inbounds rpopulation[][i] = θproposal
-                        @inbounds ru[][i,:] .= u_proposal 
-                        @inbounds rρ[][i,:] .= ρ_proposal
-                        @reduce(flooccept += 1)
-                    end
-                end
-                n_accept += flooccept
+            if rand() < accept_prob
+                population[i] = θproposal
+                u[i,:] .= u_proposal
+                ρ[i,:] .= ρ_proposal
+                n_accept += 1
             end
-            # ---------------------------------------------------- #
-        else
-            error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
+
         end
+        # ---------------------------------------------------- #
+
+        # elseif Threads.nthreads() > 1
+
+        #     # ---------------------------------------------------- #
+        #     # -- Update all particles - Multi-threaded -- #
+        #     # ---------------------------------------------------- #
+        #     # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
+        #     let Σ_jump = Σ_jump, ϵ = ϵ, flooccept::Int = 0
+        #         rpopulation = Ref(population)
+        #         ru = Ref(u)
+        #         rρ = Ref(ρ)
+        #         @floop ThreadedEx(basesize = bs) for i in eachindex(population)
+        #             # proposal
+        #             @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
+
+        #             # acceptance probability
+        #             if pdf(prior, θproposal) > 0
+        #                 ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
+        #                 if type == "single"
+        #                     ρ_proposal_single = dist_euclidean(ρ_proposal)
+        #                     u_proposal = cdfs_dist_prior(ρ_proposal_single)
+        #                 else
+        #                     u_proposal = cdfs_dist_prior(ρ_proposal)
+        #                 end
+        #                 @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
+        #                                         exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
+        #             else
+        #                 accept_prob = 0.0
+        #             end
+
+        #             if rand() < accept_prob
+        #                 @inbounds rpopulation[][i] = θproposal
+        #                 @inbounds ru[][i,:] .= u_proposal
+        #                 @inbounds rρ[][i,:] .= ρ_proposal
+        #                 @reduce(flooccept += 1)
+        #             end
+        #         end
+        #         n_accept += flooccept
+        #     end
+        #     # ---------------------------------------------------- #
+        # else
+        #     error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
+        # end
 
         # ---------------------------------------------------------- #
         ############ Update epsilon and jump distribution ############
@@ -449,46 +434,46 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         if type == "single" || type == "multi"
             # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
-            ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+            ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
         elseif type == "hybrid"
             u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-            ϵ = [update_epsilon(u_average, 1, v, 1)] 
+            ϵ = [update_epsilon(u_average, 1, v, 1)]
         end
 
         # -------------------------------- #
-        ############ Resampling ############ 
+        ############ Resampling ############
         if n_accept >= (n_resampling + 1) * resample
 
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
             if type == "single" || type == "multi"
                 # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
-                ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)] 
+                ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
             elseif type == "hybrid"
                 u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-                ϵ = [update_epsilon(u_average, 1, v, 1)] 
+                ϵ = [update_epsilon(u_average, 1, v, 1)]
             end
             n_resampling += 1
             @info "Resampling $n_resampling (δ = $δ) - ESS = $ess"
-        end 
-       
+        end
+
         # ------------------------------------------------- #
         ############ Update progress and history ############
-        if ix%checkpoint_display == 0
+        if ix % checkpoint_display == 0
             before = now
             now = Dates.now()
             inter += (now-before).value*10^(-3)  # in seconds
-            update_average_time = inter / ix 
+            update_average_time = inter / ix
             eta = (n_population_updates - ix) * update_average_time
             hh = lpad(floor(Int, eta/3600), 2, '0')
             mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
             ss = lpad(floor(Int, eta % 60), 2, '0')
             @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) "
-            flush(stderr) 
+            flush(stderr)
         end
 
         # update ϵ_history
-        if ix%checkpoint_history == 0
+        if ix % checkpoint_history == 0
             push!(ϵ_history, copy(ϵ))  # needs copy() to avoid a sequence of constant values
             push!(u_history, [mean(ic) for ic in eachcol(u)])
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
@@ -517,7 +502,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population_state.u .= u
     population_state.ρ .= ρ
 
-    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."; flush(stderr)
+    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."
     return population_state
 
 end
@@ -544,12 +529,12 @@ sabc(f_dist, prior::Distribition, args...;
 - `v=1.0`: Tuning parameter for XXX
 - `beta=0.8`: Tuning parameter for XXX
 - `δ=0.1`: Tuning parameter for XXX
-- type = "single" -> original single-ϵ
-       = "multi"  -> multi-ϵ
-       = "hybrid" -> hybrid multi-u-single-ϵ
+- `type` = `"single"` -> original single-ϵ
+         = `"multi"`  -> multi-ϵ
+         = `"hybrid"` -> hybrid multi-u-single-ϵ
 - `resample`: After how many accepted updates?
-- `checkpoint_history`: every how many population updates distances and epsilons are stored 
-- `checkpoint_display`: every how many population updates algortihm state is displayed 
+- `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
+- `checkpoint_display = 100`: every how many population updates algortihm state is displayed
 - `kwargs...`: Further arguments passed to `f_dist``
 
 ## Return
@@ -563,6 +548,11 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               checkpoint_history = 1,
               checkpoint_display = 100,
               kwargs...)
+
+    if !(type == "single" || type == "multi" || type == "hybrid")
+        error("""Argument `type` must be "single", "multi", or "hybrid", not `$type`!""")
+    end
+
 
     # ------------------------------------ #
     ############ Initialization ############
@@ -578,9 +568,9 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ, 
+                       v=v, β=β, δ=δ,
                        type = type,
-                       checkpoint_history = checkpoint_history, 
+                       checkpoint_history = checkpoint_history,
                        checkpoint_display = checkpoint_display,
                        resample=resample, kwargs...)
 
