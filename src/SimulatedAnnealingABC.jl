@@ -14,6 +14,8 @@ using Dates
 using FLoops
 using FoldsThreads
 
+using ProgressMeter
+
 include("cdf_estimators.jl")
 
 export sabc, update_population!
@@ -56,10 +58,6 @@ end
 
 """
 Function for pretty printing
-
-Requires 'import Base.show'
-Defines a new 'show' method for object of type 'SABCresult'
-Prints output when function 'sabc' returns 'SABCresult'
 """
 function show(io::Base.IO, s::SABCresult)
     n_particles = length(s.population)
@@ -75,12 +73,12 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
     println(io, "The history of ϵ can be accessed with the field `state.ϵ_history`.")
-    println(io, " -------------------------------------- ")
 end
 
 # -------------------------------------------
 # Algorithm functions
 # -------------------------------------------
+
 """
 Update ϵ
 Single-epsilon: see eq(31) in Albert et al., Statistics and Computing 25, 2015
@@ -182,13 +180,13 @@ function initialization(f_dist, prior::Distribution, args...;
     # "multi":  multi-ϵ
     # "hybrid": hybrid multi-u-single-ϵ
     if type == "single"
-        @info "Preparing to run SABC algorithm: 'single-ϵ'"
+        @info "Initialization SABC with 'single-ϵ'"
     elseif type == "multi"
-        @info "Preparing to run SABC algorithm: 'multi-ϵ'"
+        @info "Initialization SABC with 'multi-ϵ'"
     elseif type == "hybrid"
-        @info "Preparing to run SABC algorithm: 'hybrid multi-u-single-ϵ'"
+        @info "Initialization SABC with 'hybrid multi-u-single-ϵ'"
     else
-        error("Keyword type = $type not valid. Select type = 'single', 'multi' or 'hybrid'.")
+        error("Argument `type = $type` is not valid. Select type = 'single', 'multi' or 'hybrid'.")
     end
 
     # ------------------------------------------- #
@@ -205,7 +203,6 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # ---------------------------------------- #
     ############ Build prior sample ############
-    @info "Initializing population..."
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
@@ -258,7 +255,6 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # resampling before setting intial epsilon
     population, u, ess = resample_population(population, u, δ)
-    @info "Initial resampling (δ = $δ) - ESS = $ess "  # ESS = Effective sample size
     # now, intial epsilon
     if type == "single" || type == "multi"
         # size(u,2) = 1 when type = 1, and size(u,2) = _nstats when type = 2
@@ -289,8 +285,7 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0, 1)  # n_accept set to 0, n_resampling to 1
 
-    @info "Population with $n_particles particles initialised."
-    @info "Initial ϵ = $ϵ"
+    @info "Initial ϵ: $ϵ"
     return SABCresult(population, u, distances_prior_rescaled, state)
 
 end
@@ -301,15 +296,8 @@ Updates particles and applies importance sampling if needed.
 Modifies `population_state`.
 
 ## Arguments
-See `sabc`
+See docstring for `sabc`
 
-Algorithm version, specified with argument `type`
-"single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
-"multi"  -> Multi-ρ multi-u multi-ϵ SABC
-"hybrid" -> Multi-ρ multi-u single-ϵ SABC
-
-`checkpoint_history`: every how many population updates distances and epsilons are stored
-`checkpoint_display`: every how many population updates algortihm state is displayed
 """
 
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
@@ -318,7 +306,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             type = "single",
                             resample = 2*length(population_state.population),
                             checkpoint_history = 1,
-                            checkpoint_display = 100,
+                            show_progressbar::Bool = !is_logging(stderr),
+                            show_checkpoint = is_logging(stderr) ? 100 : Inf,
                             kwargs...)
 
     state = population_state.state
@@ -342,11 +331,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # basesize = n_particles/nthreads -> size of the chunk assigned to each core
         bs = ceil(Int,n_particles/Threads.nthreads())
     end
-    @info "$(now) -- Starting population updates."
-
 
     # ---------------------------------------------------- #
     ############ Main loop (population updates) ############
+
+    @show show_progressbar
+    pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
+                      output = stderr, enabled = show_progressbar)
     for ix in 1:n_population_updates
 
         # if Threads.nthreads() == 1
@@ -454,12 +445,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 ϵ = [update_epsilon(u_average, 1, v, 1)]
             end
             n_resampling += 1
-            @info "Resampling $n_resampling (δ = $δ) - ESS = $ess"
         end
 
         # ------------------------------------------------- #
         ############ Update progress and history ############
-        if ix % checkpoint_display == 0
+        if ix % show_checkpoint == 0
             before = now
             now = Dates.now()
             inter += (now-before).value*10^(-3)  # in seconds
@@ -468,8 +458,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             hh = lpad(floor(Int, eta/3600), 2, '0')
             mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
             ss = lpad(floor(Int, eta % 60), 2, '0')
-            @info "$(now) -- Update $ix of $n_population_updates -- ETA: $(hh):$(mm):$(ss) \n ϵ: $(round.(ϵ, sigdigits=4)) \n mean transformed distance: $(round.(mean(u), sigdigits=4)) "
-            flush(stderr)
+            @info "Update $ix of $n_population_updates: mean transformed distance: $(round.(mean(u), sigdigits=4)), ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(hh):$(mm):$(ss)
+ "
         end
 
         # update ϵ_history
@@ -479,6 +469,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
             last_checkpoint_epsilon = ix
         end
+
+        next!(pmeter)
     end
 
     # store the last epsilon value, if not already done
@@ -502,7 +494,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population_state.u .= u
     population_state.ρ .= ρ
 
-    @info "$(Dates.now())  All particles have been updated $(n_simulation ÷ n_particles) times."
+    @info "All particles have been updated $(n_simulation ÷ n_particles) times."
     return population_state
 
 end
@@ -534,7 +526,9 @@ sabc(f_dist, prior::Distribition, args...;
          = `"hybrid"` -> hybrid multi-u-single-ϵ
 - `resample`: After how many accepted updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
-- `checkpoint_display = 100`: every how many population updates algortihm state is displayed
+- `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
+- `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
+                                By default disabled for for interactive use.
 - `kwargs...`: Further arguments passed to `f_dist``
 
 ## Return
@@ -546,7 +540,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               resample = 2*n_particles,
               v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
-              checkpoint_display = 100,
+              show_progressbar::Bool = !is_logging(stderr),
+              show_checkpoint = is_logging(stderr) ? 100 : Inf,
               kwargs...)
 
     if !(type == "single" || type == "multi" || type == "hybrid")
@@ -568,13 +563,23 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       v=v, β=β, δ=δ,
                        type = type,
+                       resample = resample,
+                       v=v, β=β, δ=δ,
                        checkpoint_history = checkpoint_history,
-                       checkpoint_display = checkpoint_display,
-                       resample=resample, kwargs...)
+                       show_progressbar = show_progressbar,
+                       show_checkpoint = show_checkpoint,
+                       kwargs...)
 
     return population_state
 end
+
+
+# -------------------------------------------
+# Helpers
+# -------------------------------------------
+
+# From: https://github.com/timholy/ProgressMeter.jl
+is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
 
 end
