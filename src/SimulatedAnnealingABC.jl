@@ -11,9 +11,6 @@ using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 
 using Dates
-using FLoops
-using FoldsThreads
-
 using ProgressMeter
 
 include("cdf_estimators.jl")
@@ -345,9 +342,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                       output = stderr, enabled = show_progressbar)
     for ix in 1:n_population_updates
 
-        # if Threads.nthreads() == 1
+        # ----------------------------------------------------------
+        # update particles
 
-        for i in eachindex(population)
+        is_accepted = falses(length(population))
+        Threads.@threads for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
@@ -372,54 +371,13 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i,:] .= u_proposal
                 ρ[i,:] .= ρ_proposal
-                n_accept += 1
+                is_accepted[i] = true
+                # n_accept += 1
             end
 
         end
+        n_accept += sum(is_accepted)
 
-
-        # elseif Threads.nthreads() > 1
-
-        #     # ---------------------------------------------------- #
-        #     # -- Update all particles - Multi-threaded -- #
-        #     # ---------------------------------------------------- #
-        #     # Executors: ThreadedEx() (default), TaskPoolEx(), DepthFirstEx()
-        #     let Σ_jump = Σ_jump, ϵ = ϵ, flooccept::Int = 0
-        #         rpopulation = Ref(population)
-        #         ru = Ref(u)
-        #         rρ = Ref(ρ)
-        #         @floop ThreadedEx(basesize = bs) for i in eachindex(population)
-        #             # proposal
-        #             @inbounds θproposal = proposal(rpopulation[][i], Σ_jump)
-
-        #             # acceptance probability
-        #             if pdf(prior, θproposal) > 0
-        #                 ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
-        #                 if type == "single"
-        #                     ρ_proposal_single = dist_euclidean(ρ_proposal)
-        #                     u_proposal = cdfs_dist_prior(ρ_proposal_single)
-        #                 else
-        #                     u_proposal = cdfs_dist_prior(ρ_proposal)
-        #                 end
-        #                 @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, rpopulation[][i]) *
-        #                                         exp(sum((ru[][i,:] .- u_proposal) ./ ϵ))
-        #             else
-        #                 accept_prob = 0.0
-        #             end
-
-        #             if rand() < accept_prob
-        #                 @inbounds rpopulation[][i] = θproposal
-        #                 @inbounds ru[][i,:] .= u_proposal
-        #                 @inbounds rρ[][i,:] .= ρ_proposal
-        #                 @reduce(flooccept += 1)
-        #             end
-        #         end
-        #         n_accept += flooccept
-        #     end
-        #     # ---------------------------------------------------- #
-        # else
-        #     error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
-        # end
 
         # ----------------------------------------------------------
         # Update epsilon and jump distribution
