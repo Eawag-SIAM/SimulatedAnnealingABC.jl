@@ -153,9 +153,9 @@ dist_euclidean(d) = sqrt(sum(abs2, d))
 See docs for `sabc`
 
 Algorithm version, specified with argument 'type'
-"single" -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
-"multi"  -> Multi-ρ multi-u multi-ϵ SABC
-"hybrid" -> Multi-ρ multi-u SINGLE-ϵ SABC
+`:single` -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
+`:multi`  -> Multi-ρ multi-u multi-ϵ SABC
+`:hybrid` -> Multi-ρ multi-u SINGLE-ϵ SABC
 
 ## Value
 
@@ -166,19 +166,16 @@ Algorithm version, specified with argument 'type'
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.0, β = 0.8, δ= 0.1, type = "single", kwargs...)
+                        v = 1.0, β = 0.8, δ= 0.1, type = :single, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    # "single": original single-ϵ
-    # "multi":  multi-ϵ
-    # "hybrid": hybrid multi-u-single-ϵ
-    if type == "single"
+    if type == :single
         @info "Initialization SABC with 'single-ϵ'"
-    elseif type == "multi"
+    elseif type == :multi
         @info "Initialization SABC with 'multi-ϵ'"
-    elseif type == "hybrid"
+    elseif type == :hybrid
         @info "Initialization SABC with 'hybrid multi-u-single-ϵ'"
     else
         error("Argument `type = $type` is not valid. Select type = 'single', 'multi' or 'hybrid'.")
@@ -192,7 +189,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_stats = length(ρinit)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-    if type == "single"
+    if type == :single
         distances_prior_single = Array{eltype(ρinit)}(undef, n_particles, 1)
     end
     population = Vector{typeof(θ)}(undef, n_particles)
@@ -226,7 +223,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
 
     # N.B. algorithm of type single-epsilon needs single distance
-    if type == "single"
+    if type == :single
         for ix in 1:n_particles
             distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
         end
@@ -236,7 +233,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # Estimate the cdf of ρ under the prior
 
     any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
-    if type == "single"
+    if type == :single
         cdfs_dist_prior = build_cdf(distances_prior_single)
         u = similar(distances_prior_single)
         for i in 1:n_particles
@@ -256,10 +253,10 @@ function initialization(f_dist, prior::Distribution, args...;
 
     population, u, ess = resample_population(population, u, δ)
     # now, intial epsilon
-    if type == "single" || type == "multi"
+    if type == :single || type == :multi
         # size(u,2) = 1 when type = 1, and size(u,2) = _nstats when type = 2
         ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
-    elseif type == "hybrid"
+    elseif type == :hybrid
         u_average = sum(u[:,ix] for ix in 1:n_stats) ./ n_stats
         ϵ = [update_epsilon(u_average, 1, v, 1)]
     end
@@ -304,7 +301,7 @@ See docstring for `sabc`
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.0, β=0.8, δ=0.1,
-                            type = "single",
+                            type = :single,
                             resample = 2*length(population_state.population),
                             checkpoint_history = 1,
                             show_progressbar::Bool = !is_logging(stderr),
@@ -353,8 +350,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                ρ_proposal = (f_dist(θproposal, args...; kwargs...)) .* dist_rescale
-                if type == "single"
+                ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
+                if type == :single
                     ρ_proposal_single = dist_euclidean(ρ_proposal)
                     u_proposal = cdfs_dist_prior(ρ_proposal_single)
                 else
@@ -372,7 +369,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 u[i,:] .= u_proposal
                 ρ[i,:] .= ρ_proposal
                 is_accepted[i] = true
-                # n_accept += 1
             end
 
         end
@@ -384,10 +380,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         Σ_jump = estimate_jump_covariance(population, β)
 
-        if type == "single" || type == "multi"
-            # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
+        if type == :single || type == :multi
+            # size(u,2) = 1 when type = :single, and size(u,2) = n_stats when type = :multi
             ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
-        elseif type == "hybrid"
+        elseif type == :hybrid
             u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
             ϵ = [update_epsilon(u_average, 1, v, 1)]
         end
@@ -399,10 +395,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
-            if type == "single" || type == "multi"
-                # size(u,2) = 1 when type = "single", and size(u,2) = n_stats when type = "multi"
+            if type == :single || type == :multi
+                # size(u,2) = 1 when type = :single, and size(u,2) = n_stats when type = :multi
                 ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
-            elseif type == "hybrid"
+            elseif type == :hybrid
                 u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
                 ϵ = [update_epsilon(u_average, 1, v, 1)]
             end
@@ -472,7 +468,7 @@ end
 ```
 sabc(f_dist::Function, prior::Distribution, args...;
       n_particles = 100, n_simulation = 10_000,
-      type = "single",
+      type = :single,
       resample = 2*n_particles,
       v=1.0, β=0.8, δ=0.1,
       checkpoint_history = 1,
@@ -491,9 +487,9 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for XXX
 - `β = 0.8`: Tuning parameter for XXX
 - `δ = 0.1`: Tuning parameter for XXX
-- `type` = `"single"` -> single-ϵ
-         = `"multi"`  -> multi-ϵ
-         = `"hybrid"` -> hybrid multi-u-single-ϵ
+- `type` = `:single` -> single-ϵ
+         = `:multi`  -> multi-ϵ
+         = `:hybrid` -> hybrid multi-u-single-ϵ
 - `resample`: After how many accepted populatoin updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
@@ -506,7 +502,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              type = "single",
+              type = :single,
               resample = 2*n_particles,
               v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
@@ -514,8 +510,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               show_checkpoint = is_logging(stderr) ? 100 : Inf,
               kwargs...)
 
-    if !(type == "single" || type == "multi" || type == "hybrid")
-        error("""Argument `type` must be "single", "multi", or "hybrid", not `$type`!""")
+    if !(type == :single || type == :multi || type == :hybrid)
+        error("""Argument `type` must be :single, :multi, or :hybrid, not `$type`!""")
     end
 
 
@@ -551,7 +547,7 @@ end
 # Helpers
 # -------------------------------------------
 
-# From: https://github.com/timholy/ProgressMeter.jl
+# Chech if a stream is logged. From: https://github.com/timholy/ProgressMeter.jl
 is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
 
 end

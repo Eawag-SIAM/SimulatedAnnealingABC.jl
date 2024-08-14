@@ -1,7 +1,10 @@
 using SimulatedAnnealingABC
 using Test
 using Distributions
+using Logging
 
+ENV["CI"] = true                # to disable progress bar
+global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable Logging
 
 @testset "Single summary statistics" begin
     @testset "Sampling 1-dim" begin
@@ -14,26 +17,29 @@ using Distributions
         @test_throws ErrorException sabc(f_dist, prior;
                                          n_particles = 100, n_simulation = 10)
 
+        for type in [:single, :multi, :hybrid]
+            res = sabc(f_dist, prior;
+                       n_particles = 100, n_simulation = 1000,
+                       type = type)
 
-        res = sabc(f_dist, prior;
-                   n_particles = 100, n_simulation = 1000)
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
 
-        @test res.state.n_simulation <= 1000
-        @test length(res.population) == 100
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               n_simulation = 1_000,
+                               type=type)
 
-        ## update existing population
-        update_population!(res, f_dist, prior;
-                           n_simulation = 1_000)
+            @test res.state.n_simulation <= 2000
 
-        @test res.state.n_simulation <= 2000
-
-        ## update existing population with too few simulation, i.e.
-        ##  n_simulation < n_particles
-        n_sim = res.state.n_simulation
-        update_population!(res, f_dist, prior;
-                           n_simulation = 50)
-        @test res.state.n_simulation == n_sim # no updating
-
+            ## update existing population with too few simulation, i.e.
+            ##  n_simulation < n_particles
+            n_sim = res.state.n_simulation
+            update_population!(res, f_dist, prior;
+                               n_simulation = 50,
+                               type = type)
+            @test res.state.n_simulation == n_sim # no updating
+        end
     end
 
 
@@ -49,25 +55,29 @@ using Distributions
                                          n_particles = 100,
                                          n_simulation = 10)
 
+        for type in [:single, :multi, :hybrid]
+            res = sabc(f_dist, prior;
+                       n_particles = 100, n_simulation = 1000,
+                       type = type)
 
-        res = sabc(f_dist, prior;
-                   n_particles = 100, n_simulation = 1000)
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
 
-        @test res.state.n_simulation <= 1000
-        @test length(res.population) == 100
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               n_simulation = 1_000,
+                               type = type)
 
-        ## update existing population
-        update_population!(res, f_dist, prior;
-                           n_simulation = 1_000)
+            @test res.state.n_simulation <= 2000
 
-        @test res.state.n_simulation <= 2000
-
-        ## update existing population with too few simulation, i.e.
-        ##  n_simulation < n_particles
-        n_sim = res.state.n_simulation
-        update_population!(res, f_dist, prior;
-                           n_simulation = 50)
-        @test res.state.n_simulation == n_sim # no updating
+            ## update existing population with too few simulation, i.e.
+            ##  n_simulation < n_particles
+            n_sim = res.state.n_simulation
+            update_population!(res, f_dist, prior;
+                               n_simulation = 50,
+                               type = type)
+            @test res.state.n_simulation == n_sim # no updating
+        end
 
     end
 
@@ -84,26 +94,32 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        ## Sample Posterior
-        res = sabc(f_dist, prior;
-                   n_particles = 100, n_simulation = 1000);
+        for type in [:single, :multi, :hybrid]
 
-        @test all(res.state.ϵ .< 1)
-        @test res.state.n_simulation <= 1000
-        @test length(res.population) == 100
+            ## Sample Posterior
+            res = sabc(f_dist, prior;
+                       n_particles = 100, n_simulation = 1000,
+                       type = type);
 
-        ## update existing population
-        update_population!(res, f_dist, prior;
-                           n_simulation = 1_000)
+            @test all(res.state.ϵ .< 1)
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
 
-        @test res.state.n_simulation <= 2000
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               n_simulation = 1_000,
+                               type = type)
 
-        ## update existing population with too few simulation, i.e.
-        ##  n_simulation < n_particles
-        n_sim = res.state.n_simulation
-        update_population!(res, f_dist, prior;
-                           n_simulation = 50)
-        @test res.state.n_simulation == n_sim # no update
+            @test res.state.n_simulation <= 2000
+
+            ## update existing population with too few simulation, i.e.
+            ##  n_simulation < n_particles
+            n_sim = res.state.n_simulation
+            update_population!(res, f_dist, prior;
+                               n_simulation = 50,
+                               type = type)
+            @test res.state.n_simulation == n_sim # no update
+        end
 
     end
 
@@ -119,36 +135,36 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        ## Sample Posterior
-        res = sabc(f_dist, prior;
-                   n_particles = 100, n_simulation = 1000);
+        for type in [:single, :multi, :hybrid]
 
-        @test all(res.state.ϵ .< 1)
+            ## Sample Posterior
+            res = sabc(f_dist, prior;
+                       n_particles = 100, n_simulation = 1000,
+                       type = type);
 
-        @test res.state.n_simulation <= 1000
-        @test length(res.population) == 100
+            @test all(res.state.ϵ .< 1)
 
-        ## update existing population
-        update_population!(res, f_dist, prior;
-                           n_simulation = 1_000)
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
 
-        @test res.state.n_simulation <= 2000
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               n_simulation = 1_000,
+                               type = type)
 
-        ## update existing population with too few simulation, i.e.
-        ##  n_simulation < n_particles
-        n_sim = res.state.n_simulation
-        update_population!(res, f_dist, prior;
-                           n_simulation = 50)
-        @test res.state.n_simulation == n_sim # no update
+            @test res.state.n_simulation <= 2000
 
+            ## update existing population with too few simulation, i.e.
+            ##  n_simulation < n_particles
+            n_sim = res.state.n_simulation
+            update_population!(res, f_dist, prior;
+                               n_simulation = 50,
+                               type = type)
+            @test res.state.n_simulation == n_sim # no update
+        end
     end
 end
 
 @testset "Convergence" begin
-    # TOOO
-end
-
-
-@testset "Distance transformation" begin
     # TOOO
 end
