@@ -174,8 +174,6 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    # ------------------------------------ #
-    ############ Algorithm type ############
     # "single": original single-ϵ
     # "multi":  multi-ϵ
     # "hybrid": hybrid multi-u-single-ϵ
@@ -189,9 +187,10 @@ function initialization(f_dist, prior::Distribution, args...;
         error("Argument `type = $type` is not valid. Select type = 'single', 'multi' or 'hybrid'.")
     end
 
-    # ------------------------------------------- #
-    ############ Initialize containers ############
-    θ = rand(prior)  # random sample
+    # ---------------------
+    # Initialize containers
+
+    θ = rand(prior)  # take a random sample
     ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers
     n_stats = length(ρinit)
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
@@ -201,8 +200,9 @@ function initialization(f_dist, prior::Distribution, args...;
     end
     population = Vector{typeof(θ)}(undef, n_particles)
 
-    # ---------------------------------------- #
-    ############ Build prior sample ############
+    # ------------------
+    # Build prior sample
+
     for i in 1:n_particles
         ## sample
         θ = rand(prior)
@@ -215,8 +215,9 @@ function initialization(f_dist, prior::Distribution, args...;
     # We save all individual distances also for single-epsilon algorithm
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
-    # ---------------------------------------- #
-    ############ Rescale distances  ############
+    # ------------------
+    #  Rescale distances
+
     dist_rescale = 1 ./ ρ_history[1]
     # Rescale all prior distances
     distances_prior_rescaled = distances_prior
@@ -226,17 +227,17 @@ function initialization(f_dist, prior::Distribution, args...;
     # and store in history
     push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
 
-    # IMPORTANT!
-    # algorithm of type single-epsilon needs single distance
+
+    # N.B. algorithm of type single-epsilon needs single distance
     if type == "single"
         for ix in 1:n_particles
             distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
         end
     end
 
-    # --------------------------------------------- #
-    ############ Learn cdf and compute ϵ ############
-    # Estimate cdf of ρ under the prior
+    # ------------------
+    # Estimate the cdf of ρ under the prior
+
     any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
     if type == "single"
         cdfs_dist_prior = build_cdf(distances_prior_single)
@@ -253,7 +254,9 @@ function initialization(f_dist, prior::Distribution, args...;
         end
     end
 
+    # ------------------
     # resampling before setting intial epsilon
+
     population, u, ess = resample_population(population, u, δ)
     # now, intial epsilon
     if type == "single" || type == "multi"
@@ -266,12 +269,13 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # store
     u_history = [[mean(ic) for ic in eachcol(u)]]
-    ϵ_history = [copy(ϵ)]  # needs copy() to avoid a sequence of constant values when (push!)ing
+    ϵ_history = [copy(ϵ)]
 
     Σ_jump = estimate_jump_covariance(population, β)
 
-    # -------------------------------------------------------------------- #
-    ############ Collect parameters and states of the algorithm ############
+    # ---------------------
+    # Collect parameters and states of the algorithm
+
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior
                                 # and neglect the first call to f_dist ('initialization of containers')
 
@@ -324,27 +328,25 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_updates = n_population_updates * n_particles     # number of calls to `f_dist`
     last_checkpoint_epsilon = 0                        # set checkpoint counter to zero
 
-    now = Dates.now()
-    inter = 0  # to estimate ETA
+    # to estimate ETA
+    t1 = Dates.now()
+    t_inter = 0
+
     if Threads.nthreads() > 1  # set basesize for parallel for loop
         # nthreads -> number of available cores
         # basesize = n_particles/nthreads -> size of the chunk assigned to each core
         bs = ceil(Int,n_particles/Threads.nthreads())
     end
 
-    # ---------------------------------------------------- #
-    ############ Main loop (population updates) ############
+    # ----------------------------------------------------
+    #  Update all particles
 
-    @show show_progressbar
     pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
                       output = stderr, enabled = show_progressbar)
     for ix in 1:n_population_updates
 
         # if Threads.nthreads() == 1
 
-        # ---------------------------------------------------- #
-        # -- Update all particles - Single-threaded -- #
-        # ---------------------------------------------------- #
         for i in eachindex(population)
 
             # proposal
@@ -374,7 +376,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             end
 
         end
-        # ---------------------------------------------------- #
+
 
         # elseif Threads.nthreads() > 1
 
@@ -419,8 +421,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         #     error("Unrecognized Threads.nthreads(): ", Threads.nthreads())
         # end
 
-        # ---------------------------------------------------------- #
-        ############ Update epsilon and jump distribution ############
+        # ----------------------------------------------------------
+        # Update epsilon and jump distribution
+
         Σ_jump = estimate_jump_covariance(population, β)
 
         if type == "single" || type == "multi"
@@ -431,8 +434,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             ϵ = [update_epsilon(u_average, 1, v, 1)]
         end
 
-        # -------------------------------- #
-        ############ Resampling ############
+        # --------------------------------
+        # Resampling
+
         if n_accept >= (n_resampling + 1) * resample
 
             population, u, ess = resample_population(population, u, δ)
@@ -447,13 +451,18 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             n_resampling += 1
         end
 
-        # ------------------------------------------------- #
-        ############ Update progress and history ############
+        # -------------------------------------------------
+        # Update progress and history
+
         if ix % show_checkpoint == 0
-            before = now
+            before = t1
             now = Dates.now()
-            inter += (now-before).value*10^(-3)  # in seconds
-            update_average_time = inter / ix
+
+            t2 = t1
+            t1 = Dates.now()
+
+            t_inter += (t1-t2).value*10^(-3)  # in seconds
+            update_average_time = t_inter / ix
             eta = (n_population_updates - ix) * update_average_time
             hh = lpad(floor(Int, eta/3600), 2, '0')
             mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
@@ -480,8 +489,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         push!(ρ_history, [mean(ic) for ic in eachcol(ρ)])
     end
 
-    # ---------------------------------- #
-    ############ Update state ############
+    # ----------------------------------
+    # Update state
+
     state.ϵ = ϵ
     state.ϵ_history = ϵ_history
     state.u_history = u_history
@@ -502,15 +512,17 @@ end
 
 """
 ```
-sabc(f_dist, prior::Distribition, args...;
-        n_particles = 100, n_simulation = 10_000,
-        type = "single",
-        resample = 2*n_particles,
-        v=1.0, β=0.8, δ=0.1,
-        kwargs...)
-
+sabc(f_dist::Function, prior::Distribution, args...;
+      n_particles = 100, n_simulation = 10_000,
+      type = "single",
+      resample = 2*n_particles,
+      v=1.0, β=0.8, δ=0.1,
+      checkpoint_history = 1,
+      show_progressbar::Bool = !is_logging(stderr),
+      show_checkpoint = is_logging(stderr) ? 100 : Inf,
+      kwargs...)
 ```
-# Simulated Annealing Approximtaive Bayesian Inference Algorithm
+# Simulated Annealing Approximate Bayesian Inference Algorithm
 
 ## Arguments
 - `f_dist`: Function that distance between data and a random sample from the likelihood. The first argument must be the parameter vector.
@@ -518,13 +530,13 @@ sabc(f_dist, prior::Distribition, args...;
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
-- `v=1.0`: Tuning parameter for XXX
-- `beta=0.8`: Tuning parameter for XXX
-- `δ=0.1`: Tuning parameter for XXX
-- `type` = `"single"` -> original single-ϵ
+- `v = 1.0`: Tuning parameter for XXX
+- `β = 0.8`: Tuning parameter for XXX
+- `δ = 0.1`: Tuning parameter for XXX
+- `type` = `"single"` -> single-ϵ
          = `"multi"`  -> multi-ϵ
          = `"hybrid"` -> hybrid multi-u-single-ϵ
-- `resample`: After how many accepted updates?
+- `resample`: After how many accepted populatoin updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
@@ -549,15 +561,17 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     end
 
 
-    # ------------------------------------ #
-    ############ Initialization ############
+    # ------------------------------------
+    # Initialization
+
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
                                       v=v, β=β, δ=δ, type = type, kwargs...)
 
-    # ------------------------------ #
-    ############ Sampling ############
+    # ------------------------------
+    # Sampling
+
     n_sim_remaining = n_simulation - population_state.state.n_simulation
     n_sim_remaining < n_particles && @warn "`n_simulation` too small to update all particles!"
 
