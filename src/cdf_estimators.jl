@@ -17,7 +17,7 @@ smoothed by interpolation.
 Returns a function.
 """
 function build_cdf(x::AbstractVector)
-    # here x is a coulmn of the prior distance matrix
+    # here x is a column of the prior distance matrix
     # i.e., all distances (for all particles) for one given stat
     n = length(x)       # n = the number of particles
     # this is the y-axis for the interpolation:
@@ -27,7 +27,7 @@ function build_cdf(x::AbstractVector)
     a = 1.5
     values = [0; sort(x); maximum(x)*a]
 
-    # returns a function that given a distance, returns a value between 0 and 1
+    # returns a function that given a distance computes a value between 0 and 1
     extrapolate(interpolate(values, probs,
                             LinearMonotonicInterpolation()
                             ),
@@ -51,14 +51,14 @@ function build_cdf(x::Array{T, 2} where T)
     # build 1d cdfs
     # NOTE: x is the 'distances_prior' (n_particles x n_stats) matrix
     #       eachcol(x) selects all distances (for all particles) for one given stat
-    #       'build_cdf' constructs cdf functions for each summary stat
+    #       'build_cdf' constructs a cdf functions for each summary stat
     cdfs = [build_cdf(xi) for xi in eachcol(x)]
 
     # construct and return function
     # ρ is a vector, a row of the distance matrix, with size = number of stats
     # (distances for all stats, for a given particle)
     function f(ρ)
-        [cdfs[i](ρ[i]) for i in 1:length(ρ)]
+        [cdfs[i](ρ[i]) for i in eachindex(ρ)]
     end
 
     return f
