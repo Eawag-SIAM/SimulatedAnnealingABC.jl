@@ -10,6 +10,8 @@ using StatsBase: mean, cov, sample, weights
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 
+import Polyester
+
 using Dates
 using ProgressMeter
 
@@ -133,7 +135,7 @@ end
 """
 Proposal for n-dimensions, n > 1
 """
-proposal(θ, Σ::Matrix) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
+proposal(θ, Σ::AbstractArray) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
 
 """
 Proposal for 1-dimension
@@ -315,7 +317,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_stats = size(u,2)
 
     @unpack ϵ, dist_rescale, ϵ_history, ρ_history,
-            u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
+    u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
     n_particles = length(population)
 
     n_population_updates = n_simulation ÷ n_particles  # populations update = total simulations / particles
@@ -325,12 +327,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     # to estimate ETA
     t1 = Dates.now()
     t_inter = 0
-
-    if Threads.nthreads() > 1  # set basesize for parallel for loop
-        # nthreads -> number of available cores
-        # basesize = n_particles/nthreads -> size of the chunk assigned to each core
-        bs = ceil(Int,n_particles/Threads.nthreads())
-    end
 
     # ----------------------------------------------------
     #  Update all particles
@@ -342,8 +338,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        is_accepted = falses(length(population))
-        Threads.@threads for i in eachindex(population)
+        Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
@@ -368,11 +363,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i,:] .= u_proposal
                 ρ[i,:] .= ρ_proposal
-                is_accepted[i] = true
+                n_accept +=1
             end
 
         end
-        n_accept += sum(is_accepted)
 
 
         # ----------------------------------------------------------
@@ -421,8 +415,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             hh = lpad(floor(Int, eta/3600), 2, '0')
             mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
             ss = lpad(floor(Int, eta % 60), 2, '0')
-            @info "Update $ix of $n_population_updates: mean transformed distance: $(round.(mean(u), sigdigits=4)), ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(hh):$(mm):$(ss)
- "
+            @info "Update $ix of $n_population_updates: mean transformed distance: $(round.(mean(u), sigdigits=4)), " *
+                "ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(hh):$(mm):$(ss)"
         end
 
         # update ϵ_history

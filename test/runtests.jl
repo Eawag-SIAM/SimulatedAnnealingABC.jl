@@ -4,7 +4,7 @@ using Distributions
 using Logging
 
 ENV["CI"] = true                # to disable progress bar
-global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable Logging
+global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
 @testset "Single summary statistics" begin
     @testset "Sampling 1-dim" begin
@@ -18,6 +18,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable Logging
                                          n_particles = 100, n_simulation = 10)
 
         for type in [:single, :multi, :hybrid]
+
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
                        type = type)
@@ -56,6 +57,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable Logging
                                          n_simulation = 10)
 
         for type in [:single, :multi, :hybrid]
+
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
                        type = type)
