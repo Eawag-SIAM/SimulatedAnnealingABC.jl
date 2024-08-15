@@ -1,6 +1,6 @@
 # SimulatedAnnealingABC
 
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://scheidan.github.io/SimulatedAnnealingABC.jl/dev/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://eawag-siam.github.io/SimulatedAnnealingABC.jl/dev/)
 [![Build Status](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/Eawag-SIAM/SimulatedAnnealingABC.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Eawag-SIAM/SimulatedAnnealingABC.jl)
 
@@ -20,13 +20,13 @@ Here we show how to run the SimulatedAnnealingABC (SABC) algorithm to infer mode
 
 ### Data (observations)
 
-Let us start off by generating a synthetic dataset, our "observations". Consider for instance a normally distributed random sample.  
+Let us start off by generating a synthetic dataset, our "observations". Consider for instance a normally distributed random sample.
 
 ```Julia
 using Random
 using Distributions
 
-Random.seed!(1111)					  
+Random.seed!(1111)
 true_μ = 3                                                # "true" μ - to be inferred
 true_σ = 15                                               # "true" σ - to be inferred
 num_samples = 100                                         # dataset size
@@ -53,7 +53,7 @@ For a given parameter set $\theta = \left( \mu, \sigma \right)$, the model funct
 We also need to define a **prior** distribution for the model parameters that are to be inferred. In this case we choose a `Uniform` distribution for both parameters.
 
 ```Julia
-# Prior for the parameters to be inferred 
+# Prior for the parameters to be inferred
 μ_min = -10; μ_max = 20    # parameter 1: mean
 σ_min = 0; σ_max = 25      # parameter 2: std
 prior = product_distribution(Uniform(μ_min, μ_max), Uniform(σ_min, σ_max))
@@ -66,7 +66,7 @@ In general, the core of ABC algorithms consists in using the model as a forward 
 ```Julia
 function sum_stats(data)
 	stat1 = mean(data)
-	stat2 = std(data) 
+	stat2 = std(data)
 	return [stat1, stat2]
 end
 ```
@@ -77,7 +77,7 @@ The function `sum_stats` returns an array of size `n_stats`, where `n_stats` den
 n_stats = size(sum_stats(y_obs), 1)
 ```
 
-We can now reduce our "observations" to a (low-dimensional) set of summary statistics. 
+We can now reduce our "observations" to a (low-dimensional) set of summary statistics.
 
 ```Julia
 ss_obs = sum_stats(y_obs)
@@ -100,7 +100,7 @@ Now, the `model` function returns a low-dimensional array of length `n_stats`.
 
 ### Distance function
 
-Lastly, we need to define a **distance function**. The distance function MUST return an array containing the INDIVIDUAL distances, for EACH summary statistics, between observations and model outputs. In other words, given `n_stats` summary statistics, the distance function will ALWAYS return an array of length `n_stats`.  
+Lastly, we need to define a **distance function**. The distance function MUST return an array containing the INDIVIDUAL distances, for EACH summary statistics, between observations and model outputs. In other words, given `n_stats` summary statistics, the distance function will ALWAYS return an array of length `n_stats`.
 
 ```Julia
 using Distances
@@ -118,7 +118,7 @@ The algorithm will keep track of the evolution of EACH individual distance (for 
 
 The following functions have been implemented up to this point:
 
-1. `sum_stats` (reduces a high-dimensional dataset to a low-dimensional set of statistics) 
+1. `sum_stats` (reduces a high-dimensional dataset to a low-dimensional set of statistics)
 2. `model` (given model parameters `θ`, generates a dataset and returns summary statistics)
 3. `f_dist` (computes the distance between individual summary statistics)
 4. `prior` (prior for the parameters to be inferred)
@@ -132,7 +132,7 @@ np = 1000       # number of particles
 ns = 1_000_000  # number of particle updates
 ```
 
-Note that the total number of **population updates** is given by `n_pop_updates = div(ns, np)`. Note also that the generation of the initial prior sample is counted as a population update step. Therefore, the total number of population updates after initialization will effectively be `n_pop_updates - 1`.  
+Note that the total number of **population updates** is given by `n_pop_updates = div(ns, np)`. Note also that the generation of the initial prior sample is counted as a population update step. Therefore, the total number of population updates after initialization will effectively be `n_pop_updates - 1`.
 
 The `sabc` function requires two inputs:
 
@@ -143,14 +143,14 @@ Additional arguments that can be passed to the function are the following.
 
 - `n_particles`: number of particles used in the inference.
 - `n_simulation`: total number of particle updates.
-- `v`: annealing speed. Recommended values are: 
+- `v`: annealing speed. Recommended values are:
   - `v=1` for single-ϵ algorithms (type "single" and "hybrid", default value).
   - `v=10` for multi-ϵ (type "multi").
 - `type`: to choose the specific SABC algorithm.
   - `type="single"` is single-ϵ.
   - `type="multi"` is multi-ϵ.
   - `type="hybrid"` is the hybrid multi-u-single-ϵ algorithm.
-- `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lengthy output files). Note that `n` population updates correspond to `n*n_particles` particle updates.    
+- `checkpoint_display`: every how many population updates information on the inference progress is displayed. Default value is `100`. Recommended value with a long inference is `500` or more (to avoid unnecessarily lengthy output files). Note that `n` population updates correspond to `n*n_particles` particle updates.
 
 The following arguments rarely require adjustments.
 
@@ -214,9 +214,9 @@ The output files have the following dimensions:
 - ρ trajectories are always stored as individual trajectories for each summary statistics, even for algorithm of type "single", where a single ρ is effectively used for the inference.
 - Moreover, note that each trajectory has length `n_pop_updates + 1`. This is because also the distances of the prior sample, **before rescaling**, are stored as first element of the ρ array.
 
-### To continue the inference 
+### To continue the inference
 
-After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type "single"). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.  
+After analysing the output, we may decide to update the current population with another 1_000_000 simulations. That can be easily done with the function `update_population!`. We show here for example how to continue the inference for the single-ϵ algorithm (type "single"). We run another `ns` simulations. Note that `type` and `v` should be consistent with the algorithm used to generate the first batch.
 
 ```Julia
 out_single_eps_2 = update_population!(out_single_eps, f_dist, prior; n_simulation = ns, v = 1.0, type = "single")
@@ -228,7 +228,7 @@ One may also want to store the output file and decide whether to continue the in
 using Serialization
 
 # replace [output path] with appropriate path
-serialize("[output path]/sabc_result_single_eps", out_single_eps) 
+serialize("[output path]/sabc_result_single_eps", out_single_eps)
 
 ```
 
@@ -247,7 +247,7 @@ A sample from the true posterior can be easily obtained using the [AffineInvaria
 ```Julia
 using AffineInvariantMCMC
 
-# log-likelihood 
+# log-likelihood
 llhood = θ -> begin
 	μ, σ  = θ;
 	return -num_samples*log(σ) - sum((y_obs.-μ).^2)/(2*σ^2)
@@ -267,7 +267,7 @@ end
 lprob = θ -> begin
 	μ, σ  = θ;
 	lp = lprior(theta)
-	if isinf(lp) 
+	if isinf(lp)
 		return -Inf
 	else
 		return lp + llhood(theta)
@@ -283,8 +283,8 @@ burnin = 1000;
 
 rng = MersenneTwister(11);
 theta0 = Array{Float64}(undef, numdims, numwalkers);
-theta0[1, :] = rand(rng, Uniform(μ_min, μ_max), numwalkers); 
-theta0[2, :] = rand(rng, Uniform(σ_min, σ_max), numwalkers); 
+theta0[1, :] = rand(rng, Uniform(μ_min, μ_max), numwalkers);
+theta0[2, :] = rand(rng, Uniform(σ_min, σ_max), numwalkers);
 
 chain, llhoodvals = runMCMCsample(lprob, numwalkers, theta0, burnin, 1);
 chain, llhoodvals = runMCMCsample(lprob, numwalkers, chain[:, :, end], numsamples_perwalker, thinning);
