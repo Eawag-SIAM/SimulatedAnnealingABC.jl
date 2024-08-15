@@ -1,7 +1,7 @@
 name = "SimulatedAnnealingABC"
 uuid = "2e0e63f1-f03b-4682-b156-8f8e3c0454d9"
 authors = ["Andreas Scheidegger", "Simone Ulzega"]
-version = "1.0.0-DEV"
+version = "0.2.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -16,7 +16,15 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-julia = "1.9"
+julia = "^1.9"
+
+Distributions = "^0.25"
+Interpolations = "^0.15"
+Polyester = "^0.7"
+ProgressMeter = "^1"
+Roots = "^2.1"
+StatsBase = "^0.34"
+UnPack = "^1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
