@@ -173,15 +173,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    if type == :single
-        @info "Initialization SABC with 'single-ϵ'"
-    elseif type == :multi
-        @info "Initialization SABC with 'multi-ϵ'"
-    elseif type == :hybrid
-        @info "Initialization SABC with 'hybrid multi-u-single-ϵ'"
-    else
-        error("Argument `type = $type` is not valid. Select type = 'single', 'multi' or 'hybrid'.")
-    end
+    @info "Initialization with '$(type)-ϵ'"
 
     # ---------------------
     # Initialize containers
@@ -285,7 +277,6 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0, 1)  # n_accept set to 0, n_resampling to 1
 
-    @info "Initial ϵ: $ϵ"
     return SABCresult(population, u, distances_prior_rescaled, state)
 
 end
@@ -333,6 +324,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
                       output = stderr, enabled = show_progressbar)
+    generate_showvalues(ϵ) = () -> [("ϵ", round.(ϵ, sigdigits=4))]
     for ix in 1:n_population_updates
 
         # ----------------------------------------------------------
@@ -427,7 +419,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             last_checkpoint_epsilon = ix
         end
 
-        next!(pmeter)
+        next!(pmeter, showvalues = generate_showvalues(ϵ))
     end
 
     # store the last epsilon value, if not already done
