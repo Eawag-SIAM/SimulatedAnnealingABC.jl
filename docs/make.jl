@@ -6,11 +6,11 @@ DocMeta.setdocmeta!(SimulatedAnnealingABC, :DocTestSetup, :(using SimulatedAnnea
 makedocs(;
     modules=[SimulatedAnnealingABC],
     authors="Andreas Scheidegger",
-    repo="https://github.com/scheidan/SimulatedAnnealingABC.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl/blob/{commit}{path}#{line}",
     sitename="SimulatedAnnealingABC.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://scheidan.github.io/SimulatedAnnealingABC.jl",
+        canonical="https://Eawag-SIAM.github.io/SimulatedAnnealingABC.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -20,6 +20,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/scheidan/SimulatedAnnealingABC.jl",
+    repo="github.com/Eawag-SIAM/SimulatedAnnealingABC.jl",
     devbranch="main",
 )

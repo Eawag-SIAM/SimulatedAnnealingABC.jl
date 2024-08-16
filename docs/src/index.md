@@ -4,7 +4,7 @@ CurrentModule = SimulatedAnnealingABC
 
 # SimulatedAnnealingABC
 
-Documentation for [SimulatedAnnealingABC](https://github.com/scheidan/SimulatedAnnealingABC.jl).
+Documentation for [SimulatedAnnealingABC](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl).
 
 ```@index
 ```
