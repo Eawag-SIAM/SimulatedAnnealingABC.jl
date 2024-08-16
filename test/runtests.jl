@@ -6,7 +6,7 @@ using Logging
 ENV["CI"] = true                # to disable progress bar
 global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
-@testset "Single summary statistics" begin
+@testset "Single summary statistics" verbose = true begin
     @testset "Sampling 1-dim" begin
 
         ## Define model
@@ -85,7 +85,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
 end
 
-@testset "Multible summary statistics" begin
+@testset "Multible summary statistics" verbose = true begin
     @testset "Sampling 1-dim" begin
         # define prior
         prior = Normal(0,1)
