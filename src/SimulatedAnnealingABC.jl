@@ -42,11 +42,13 @@ mutable struct SABCstate
 end
 
 """
-Holds results
+Holds results from a SABC run with fields:
 - `population`: vector of parameter samples from the approximate posterior
 - `u`: transformed distances
 - `ρ`: distances
 - `state`: state of algorithm
+
+The history of ϵ can be accessed with the field `state.ϵ_history`.
 """
 struct SABCresult{T, S}
     population::Vector{T}
@@ -265,7 +267,6 @@ Modifies `population_state`.
 See docstring for `sabc`
 
 """
-
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.0, β=0.8, δ=0.1,
@@ -433,9 +434,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for XXX
 - `β = 0.8`: Tuning parameter for XXX
 - `δ = 0.1`: Tuning parameter for XXX
-- `type` = `:single` -> single-ϵ
-         = `:multi`  -> multi-ϵ
-         = `:hybrid` -> hybrid multi-u-single-ϵ
+- `type = :single`: Choose algorithm, either `:single` ,`:multi`, or `:hybrid`
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.

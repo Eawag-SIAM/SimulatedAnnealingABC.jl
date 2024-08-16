@@ -8,12 +8,13 @@ Documentation for [SimulatedAnnealingABC](https://github.com/Eawag-SIAM/Simulate
 
 This package provides different SimulatedAnnealingABC (SABC)
 algorithms for Approximate Bayesian Computation (ABC) (sometimes also called
-_simulation-based inference_ or _likelihood-free inference_").
+_simulation-based inference_ or _likelihood-free inference_).
 
-> [!NOTE]
-> If you are able to compute the density of your posterior, you should
-most likely not be using this or another ABC package.  A traditional MCMC
-algorithm will be much more efficient.
+!!! note
+
+    If you are able to compute the density of your posterior, you should
+    most likely not be using this or another ABC package!  A traditional MCMC
+    algorithm will be much more efficient.
 
 
 
@@ -25,17 +26,17 @@ todo...
 
 ## API
 
-```@index
-```
-
 ```@docs
 sabc
 ```
 
 ```@docs
- update_population!
+update_population!
 ```
 
+```@docs
+SABCresult
+```
 
 ## Related Julia Packages
 
@@ -45,4 +46,4 @@ todo
 
 Albert, C., Künsch, H.R., Scheidegger, A., 2015. A simulated annealing
 approach to approximate Bayes computations. Statistics and computing
-25, 1217–1232. https://doi.org/10.1007/s11222-014-9507-8
+25, 1217–1232. [https://doi.org/10.1007/s11222-014-9507-8](https://doi.org/10.1007/s11222-014-9507-8)
