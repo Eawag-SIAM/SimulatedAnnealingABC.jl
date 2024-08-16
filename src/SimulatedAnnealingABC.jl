@@ -292,15 +292,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     last_checkpoint_epsilon = 0                        # set checkpoint counter to zero
 
     # to estimate ETA
-    t1 = Dates.now()
-    t_inter = 0
+    t_start = Dates.now()
 
     # ----------------------------------------------------
     #  Update all particles
 
     pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
                       output = stderr, enabled = show_progressbar)
-    generate_showvalues(ϵ) = () -> [("ϵ", round.(ϵ, sigdigits=4))]
+    generate_showvalues(ϵ, u) = () -> [("ϵ", round.(ϵ, sigdigits=4)), ("average transformed distance", round.(mean(u), sigdigits=4))]
     for ix in 1:n_population_updates
 
         # ----------------------------------------------------------
@@ -366,20 +365,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # Update progress and history
 
         if ix % show_checkpoint == 0
-            before = t1
-            now = Dates.now()
-
-            t2 = t1
-            t1 = Dates.now()
-
-            t_inter += (t1-t2).value*10^(-3)  # in seconds
-            update_average_time = t_inter / ix
-            eta = (n_population_updates - ix) * update_average_time
-            hh = lpad(floor(Int, eta/3600), 2, '0')
-            mm = lpad(floor(Int, (eta % 3600)/60), 2, '0')
-            ss = lpad(floor(Int, eta % 60), 2, '0')
-            @info "Update $ix of $n_population_updates: mean transformed distance: $(round.(mean(u), sigdigits=4)), " *
-                "ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(hh):$(mm):$(ss)"
+            eta = ((Dates.now() - t_start) ÷ ix) * (n_population_updates - ix)
+            etastr = eta > Dates.Second(1) ? Dates.canonicalize(round(eta, Dates.Second)) : "< 1 Second"
+            @info "Update $ix of $n_population_updates. average transformed distance: $(round.(mean(u), sigdigits=4)), " *
+                "ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(etastr)"
         end
 
         # update ϵ_history
@@ -390,7 +379,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             last_checkpoint_epsilon = ix
         end
 
-        next!(pmeter, showvalues = generate_showvalues(ϵ))
+        next!(pmeter, showvalues = generate_showvalues(ϵ, u))
     end
 
     # store the last epsilon value, if not already done
@@ -504,7 +493,7 @@ end
 # Helpers
 # -------------------------------------------
 
-# Chech if a stream is logged. From: https://github.com/timholy/ProgressMeter.jl
+# Check if a stream is logged. From: https://github.com/timholy/ProgressMeter.jl
 is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
 
 end
