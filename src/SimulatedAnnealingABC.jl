@@ -34,7 +34,7 @@ mutable struct SABCstate
     ρ_history::Vector{Vector{Float64}}
     u_history::Vector{Vector{Float64}}
 
-    cdfs_dist_prior              # function G in Albert et al., Statistics and Computing 25, 2015
+    cdfs_dist_prior             # function G in Albert et al., Statistics and Computing 25, 2015
     Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int           # number of simulations
     n_accept::Int               # number of accepted updates
@@ -142,11 +142,6 @@ Proposal for 1-dimension
 """
 proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 
-"""
-Distance
-"""
-dist_euclidean(d) = sqrt(sum(abs2, d))
-
 
 """
 # Initialisation step
@@ -172,6 +167,8 @@ function initialization(f_dist, prior::Distribution, args...;
     θ = rand(prior)  # take a random sample
     ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers
     n_stats = length(ρinit)
+    (type == :single && n_stats != 1) &&
+        error("`f_dist` must return a single value for `type = :single`!")
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     if type == :single
@@ -207,31 +204,18 @@ function initialization(f_dist, prior::Distribution, args...;
     push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
 
 
-    # N.B. algorithm of type single-epsilon needs single distance
-    if type == :single
-        for ix in 1:n_particles
-            distances_prior_single[ix] = dist_euclidean(distances_prior_rescaled[ix,:])
-        end
-    end
-
     # ------------------
     # Estimate the cdf of ρ under the prior
 
     any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
-    if type == :single
-        cdfs_dist_prior = build_cdf(distances_prior_single)
-        u = similar(distances_prior_single)
-        for i in 1:n_particles
-            u[i,:] .= cdfs_dist_prior(distances_prior_single[i,:])
-        end
-    else
-        cdfs_dist_prior = build_cdf(distances_prior_rescaled)
-        u = similar(distances_prior_rescaled)
-        # Transformed distances
-        for i in 1:n_particles
-            u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
-        end
+
+    cdfs_dist_prior = build_cdf(distances_prior_rescaled)
+    u = similar(distances_prior_rescaled)
+    # Transformed distances
+    for i in 1:n_particles
+        u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
     end
+
 
     # ------------------
     # resampling before setting intial epsilon
@@ -239,7 +223,7 @@ function initialization(f_dist, prior::Distribution, args...;
     population, u, ess = resample_population(population, u, δ)
     # now, intial epsilon
     if type == :single || type == :multi
-        # size(u,2) = 1 when type = 1, and size(u,2) = _nstats when type = 2
+        # size(u,2) = 1 when type = 1, and size(u,2) = nstats when type = 2
         ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
     elseif type == :hybrid
         u_average = sum(u[:,ix] for ix in 1:n_stats) ./ n_stats
@@ -300,6 +284,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     @unpack ϵ, dist_rescale, ϵ_history, ρ_history,
     u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
+
     n_particles = length(population)
 
     n_population_updates = n_simulation ÷ n_particles  # populations update = total simulations / particles
@@ -329,12 +314,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             # acceptance probability
             if pdf(prior, θproposal) > 0
                 ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
-                if type == :single
-                    ρ_proposal_single = dist_euclidean(ρ_proposal)
-                    u_proposal = cdfs_dist_prior(ρ_proposal_single)
-                else
-                    u_proposal = cdfs_dist_prior(ρ_proposal)
-                end
+                u_proposal = cdfs_dist_prior(ρ_proposal)
 
                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                     exp(sum((u[i,:] .- u_proposal) ./ ϵ))
@@ -456,7 +436,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 # Simulated Annealing Approximate Bayesian Inference Algorithm
 
 ## Arguments
-- `f_dist`: Function that distance between data and a random sample from the likelihood. The first argument must be the parameter vector.
+- `f_dist`: Function that one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector.
 - `prior`: A `Distribution` defining the prior.
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.

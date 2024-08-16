@@ -96,7 +96,12 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        for type in [:single, :multi, :hybrid]
+        # type :single not possible
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 1000,
+                                         type = :single )
+
+        for type in [:multi, :hybrid]
 
             ## Sample Posterior
             res = sabc(f_dist, prior;
@@ -137,7 +142,12 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        for type in [:single, :multi, :hybrid]
+        # type :single not possible
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 1000,
+                                         type = :single )
+
+        for type in [:multi, :hybrid]
 
             ## Sample Posterior
             res = sabc(f_dist, prior;
@@ -165,8 +175,4 @@ end
             @test res.state.n_simulation == n_sim # no update
         end
     end
-end
-
-@testset "Convergence" begin
-    # TODO
 end
