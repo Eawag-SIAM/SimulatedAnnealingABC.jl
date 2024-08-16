@@ -8,7 +8,7 @@ Documentation for [SimulatedAnnealingABC](https://github.com/Eawag-SIAM/Simulate
 
 This package provides different SimulatedAnnealingABC (SABC)
 algorithms for Approximate Bayesian Computation (ABC) (sometimes also called
-_simulation-based inference_).
+_simulation-based inference_ or _likelihood-free inference_").
 
 > [!NOTE]
 > If you are able to compute the density of your posterior, you should
