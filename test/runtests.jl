@@ -28,8 +28,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
             ## update existing population
             update_population!(res, f_dist, prior;
-                               n_simulation = 1_000,
-                               type=type)
+                               n_simulation = 1_000)
 
             @test res.state.n_simulation <= 2000
 
@@ -37,8 +36,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
             ##  n_simulation < n_particles
             n_sim = res.state.n_simulation
             update_population!(res, f_dist, prior;
-                               n_simulation = 50,
-                               type = type)
+                               n_simulation = 50)
             @test res.state.n_simulation == n_sim # no updating
         end
     end
@@ -67,8 +65,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
             ## update existing population
             update_population!(res, f_dist, prior;
-                               n_simulation = 1_000,
-                               type = type)
+                               n_simulation = 1_000)
 
             @test res.state.n_simulation <= 2000
 
@@ -76,8 +73,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
             ##  n_simulation < n_particles
             n_sim = res.state.n_simulation
             update_population!(res, f_dist, prior;
-                               n_simulation = 50,
-                               type = type)
+                               n_simulation = 50)
             @test res.state.n_simulation == n_sim # no updating
         end
 
@@ -114,8 +110,7 @@ end
 
             ## update existing population
             update_population!(res, f_dist, prior;
-                               n_simulation = 1_000,
-                               type = type)
+                               n_simulation = 1_000)
 
             @test res.state.n_simulation <= 2000
 
@@ -123,8 +118,7 @@ end
             ##  n_simulation < n_particles
             n_sim = res.state.n_simulation
             update_population!(res, f_dist, prior;
-                               n_simulation = 50,
-                               type = type)
+                               n_simulation = 50)
             @test res.state.n_simulation == n_sim # no update
         end
 
@@ -161,8 +155,7 @@ end
 
             ## update existing population
             update_population!(res, f_dist, prior;
-                               n_simulation = 1_000,
-                               type = type)
+                               n_simulation = 1_000)
 
             @test res.state.n_simulation <= 2000
 
@@ -170,8 +163,7 @@ end
             ##  n_simulation < n_particles
             n_sim = res.state.n_simulation
             update_population!(res, f_dist, prior;
-                               n_simulation = 50,
-                               type = type)
+                               n_simulation = 50)
             @test res.state.n_simulation == n_sim # no update
         end
     end

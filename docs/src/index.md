@@ -20,8 +20,18 @@ _simulation-based inference_ or _likelihood-free inference_).
 
 ## Usage
 
-todo...
+Demonstrate how to use `sabc` and `update_population!` with a minimal example.
 
+### logging and progress bar
+
+### how to disable multi-threading
+
+
+## Worked example
+
+Translate and update example from readme.
+
+explain pro and cons of the different algo types.
 
 
 ## API

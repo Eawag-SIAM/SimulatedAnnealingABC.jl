@@ -28,6 +28,7 @@ Holds state of algorithm
 mutable struct SABCstate
     ϵ::Vector{Float64}             # epsilon = temperature
     dist_rescale::Vector{Float64}  # vector for rescaling distances
+    type::Symbol                   # the algorithm used
 
     # Containers to store trajectories
     ϵ_history::Vector{Vector{Float64}}
@@ -67,6 +68,7 @@ function show(io::Base.IO, s::SABCresult)
                       sigdigits = 4)
 
     println(io, "Approximate posterior sample with $n_particles particles:")
+    println(io, "  - type: :$(s.state.type)")
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - average transformed distance: $mean_u")
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
@@ -246,6 +248,7 @@ function initialization(f_dist, prior::Distribution, args...;
 
     state = SABCstate(ϵ,
                       dist_rescale,
+                      type,
                       ϵ_history,
                       ρ_history,
                       u_history,
@@ -260,17 +263,28 @@ end
 
 
 """
-Updates particles and applies importance sampling if needed.
+```
+update_population!(population_state::SABCresult,
+                   f_dist, prior, args...;
+                   n_simulation,
+                   v=1.0, β=0.8, δ=0.1,
+                   resample = 2*length(population_state.population),
+                   checkpoint_history = 1,
+                   show_progressbar::Bool = !is_logging(stderr),
+                   show_checkpoint = is_logging(stderr) ? 100 : Inf,
+                   kwargs...)
+```
+
+Updates particles with `n_simulation` and applies importance sampling if needed.
 Modifies `population_state`.
 
 ## Arguments
-See docstring for `sabc`
+See docstring for `sabc`.
 
 """
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.0, β=0.8, δ=0.1,
-                            type = :single,
                             resample = 2*length(population_state.population),
                             checkpoint_history = 1,
                             show_progressbar::Bool = !is_logging(stderr),
@@ -283,7 +297,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ρ = copy(population_state.ρ)
     n_stats = size(u,2)
 
-    @unpack ϵ, dist_rescale, ϵ_history, ρ_history,
+    @unpack ϵ, dist_rescale, type, ϵ_history, ρ_history,
     u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
 
     n_particles = length(population)
@@ -476,7 +490,6 @@ function sabc(f_dist::Function, prior::Distribution, args...;
 
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
-                       type = type,
                        resample = resample,
                        v=v, β=β, δ=δ,
                        checkpoint_history = checkpoint_history,
