@@ -154,17 +154,8 @@ dist_euclidean(d) = sqrt(sum(abs2, d))
 ## Arguments
 See docs for `sabc`
 
-Algorithm version, specified with argument 'type'
-`:single` -> Original single-ρ single-u single-ϵ SABC ("vanilla" SABC)
-`:multi`  -> Multi-ρ multi-u multi-ϵ SABC
-`:hybrid` -> Multi-ρ multi-u SINGLE-ϵ SABC
-
-## Value
-
-- population
-- u
-- prior distances
-- state
+## Return
+- An object of type `SABCresult`
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
@@ -191,7 +182,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # ------------------
     # Build prior sample
 
-    for i in 1:n_particles
+    Polyester.@batch for i in 1:n_particles
         ## sample
         θ = rand(prior)
         ρinit = f_dist(θ, args...; kwargs...)
@@ -476,7 +467,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `type` = `:single` -> single-ϵ
          = `:multi`  -> multi-ϵ
          = `:hybrid` -> hybrid multi-u-single-ϵ
-- `resample`: After how many accepted populatoin updates?
+- `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
