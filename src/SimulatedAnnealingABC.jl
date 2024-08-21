@@ -133,7 +133,7 @@ end
 Estimate the covariance for the jump distributions from a population
 """
 function estimate_jump_covariance(population, β)
-    β * cov(stack(population, dims=1)) + 1e-15*I
+    β * (cov(stack(population, dims=1)) + 1e-8*I)
 end
 
 """
