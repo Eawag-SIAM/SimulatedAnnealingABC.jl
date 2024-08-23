@@ -12,8 +12,8 @@ annealing.
 
 > [!NOTE]
 > Can you evaluate the density of your posterior? Then you should most
-> likely **not** be using this or any other ABC package!  A
-> traditional MCMC algorithm will be much more efficient.
+> likely **not** be using this or any other ABC package!
+> Conventional MCMC algorithm will be much more efficient.
 
 
 ## Installation
