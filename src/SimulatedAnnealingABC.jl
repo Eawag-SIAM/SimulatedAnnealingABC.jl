@@ -27,7 +27,6 @@ Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}             # epsilon = temperature
-    dist_rescale::Vector{Float64}  # vector for rescaling distances
     type::Symbol                   # the algorithm used
 
     # Containers to store trajectories
@@ -195,29 +194,17 @@ function initialization(f_dist, prior::Distribution, args...;
     # We save all individual distances also for single-epsilon algorithm
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
-    # ------------------
-    #  Rescale distances
-
-    dist_rescale = 1 ./ ρ_history[1]
-    # Rescale all prior distances
-    distances_prior_rescaled = distances_prior
-    for ir in eachrow(distances_prior_rescaled)
-        ir .*= dist_rescale
-    end
-    # and store in history
-    push!(ρ_history, [mean(ic) for ic in eachcol(distances_prior_rescaled)])
-
 
     # ------------------
     # Estimate the cdf of ρ under the prior
 
-    any(distances_prior_rescaled .< 0) && error("Negative distances are not allowed!")
+    any(distances_prior .< 0) && error("Negative distances are not allowed!")
 
-    cdfs_dist_prior = build_cdf(distances_prior_rescaled)
-    u = similar(distances_prior_rescaled)
+    cdfs_dist_prior = build_cdf(distances_prior)
+    u = similar(distances_prior)
     # Transformed distances
     for i in 1:n_particles
-        u[i,:] .= cdfs_dist_prior(distances_prior_rescaled[i,:])
+        u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
     end
 
 
@@ -247,7 +234,6 @@ function initialization(f_dist, prior::Distribution, args...;
                                 # and neglect the first call to f_dist ('initialization of containers')
 
     state = SABCstate(ϵ,
-                      dist_rescale,
                       type,
                       ϵ_history,
                       ρ_history,
@@ -257,7 +243,7 @@ function initialization(f_dist, prior::Distribution, args...;
                       n_simulation,
                       0, 1)  # n_accept set to 0, n_resampling to 1
 
-    return SABCresult(population, u, distances_prior_rescaled, state)
+    return SABCresult(population, u, distances_prior, state)
 
 end
 
@@ -297,7 +283,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ρ = copy(population_state.ρ)
     n_stats = size(u,2)
 
-    @unpack ϵ, dist_rescale, type, ϵ_history, ρ_history,
+    @unpack ϵ, type, ϵ_history, ρ_history,
     u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
 
     n_particles = length(population)
@@ -327,7 +313,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
-                ρ_proposal = f_dist(θproposal, args...; kwargs...) .* dist_rescale
+                ρ_proposal = f_dist(θproposal, args...; kwargs...)
                 u_proposal = cdfs_dist_prior(ρ_proposal)
 
                 accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
