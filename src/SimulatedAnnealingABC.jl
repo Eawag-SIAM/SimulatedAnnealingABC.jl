@@ -165,7 +165,7 @@ See docs for `sabc`
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.0, β = 0.8, δ= 0.1, type = :multi, kwargs...)
+                        v = 1.0, β = 0.8, δ= 0.1, type = :hybrid, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -431,7 +431,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for XXX
 - `β = 0.8`: Tuning parameter for XXX
 - `δ = 0.1`: Tuning parameter for XXX
-- `type = :multi`: Choose algorithm, either `:multi`, or `:hybrid`
+- `type = :hybrid`: Choose algorithm, either `:multi`, or `:hybrid`
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
@@ -444,7 +444,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              type = :multi,
+              type = :hybrid,
               resample = 2*n_particles,
               v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
