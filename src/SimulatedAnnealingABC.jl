@@ -81,31 +81,39 @@ end
 # Algorithm functions
 # -------------------------------------------
 
+
+"""
+Update ϵ for a single statistics. See eq(31) in Albert et al., Statistics and Computing 25, 2015
+"""
+function update_epsilon_single_stat(ū, v)
+
+    ϵ_new = ū <= eps() ? zero(ū) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - ū^2, (0, ū))
+    Float64[ϵ_new]
+end
+
 """
 Update ϵ
-Single-epsilon: see eq(31) in Albert et al., Statistics and Computing 25, 2015
 Multi-epsilon:  new update rule
 """
-function update_epsilon(u, ui, v, n)
-    mean_u = mean(u, dims=1)
-    mean_ui = mean_u[ui]
-    if n > 1  # multiple stats
-        if mean_ui <= eps()
-            error("Division by zero - Mean u for statistic $ui = $mean_ui - Multi-epsilon not possible. Try single-epsilon.")
+function update_epsilon_multi_stats(u, v)
+    n = size(u, 2)        # number of statistics
+    ū = mean(u, dims=1)
+    cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
+    ϵ_new = Vector{Float64}(undef, n)
+    for i in 1:n
+        ūi = ū[i]
+        if ūi <= eps()
+            error("Division by zero - Mean u for statistic $i = $ūi")
         end
-        q = mean_u / mean_ui
-        cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
+        q = ū ./ ūi
         num = 1 + sum(q.^(n/2))
-        den = cn*(n+1)*mean_ui^(1+n/2)*prod(q)
-        βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - mean_ui, 1/mean_ui)
-        ϵ_new = 1/(βi + v*num/den)
-    elseif n == 1  # one stat
-        ϵ_new = mean_ui <= eps() ? zero(mean_ui) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - mean_ui^2, (0, mean_ui))
-    else
-        error("Inconsistency - number of statistics = $n should be >= 1")
+        den = cn*(n+1)*ūi^(1+n/2)*prod(q)
+        βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - ūi, 1/ūi)
+        ϵ_new[i] = 1/(βi + v*num/den)
     end
     ϵ_new
 end
+
 
 
 """
@@ -157,7 +165,7 @@ See docs for `sabc`
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.0, β = 0.8, δ= 0.1, type = :single, kwargs...)
+                        v = 1.0, β = 0.8, δ= 0.1, type = :multi, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -170,13 +178,7 @@ function initialization(f_dist, prior::Distribution, args...;
     θ = rand(prior)  # take a random sample
     ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers
     n_stats = length(ρinit)
-    (type == :single && n_stats != 1) &&
-        error("`f_dist` must return a single value for `type = :single`!")
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-    distances_prior_rescaled = Array{eltype(ρinit)}(undef, n_particles, n_stats)
-    if type == :single
-        distances_prior_single = Array{eltype(ρinit)}(undef, n_particles, 1)
-    end
     population = Vector{typeof(θ)}(undef, n_particles)
 
     # ------------------
@@ -190,8 +192,6 @@ function initialization(f_dist, prior::Distribution, args...;
         population[i] = θ
         distances_prior[i,:] .= ρinit
     end
-    # Keep track of the original prior distances (before rescaling)
-    # We save all individual distances also for single-epsilon algorithm
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
 
@@ -210,15 +210,13 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # ------------------
     # resampling before setting intial epsilon
-
     population, u, ess = resample_population(population, u, δ)
-    # now, intial epsilon
-    if type == :single || type == :multi
-        # size(u,2) = 1 when type = 1, and size(u,2) = nstats when type = 2
-        ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
-    elseif type == :hybrid
-        u_average = sum(u[:,ix] for ix in 1:n_stats) ./ n_stats
-        ϵ = [update_epsilon(u_average, 1, v, 1)]
+
+    # initialize epsilon
+    if type == :multi
+        ϵ = update_epsilon_multi_stats(u, v)
+    elseif  type == :hybrid
+        ϵ = update_epsilon_single_stat(mean(u), v)
     end
 
     # store
@@ -337,12 +335,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         Σ_jump = estimate_jump_covariance(population, β)
 
-        if type == :single || type == :multi
-            # size(u,2) = 1 when type = :single, and size(u,2) = n_stats when type = :multi
-            ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
+        if type == :multi
+            ϵ = update_epsilon_multi_stats(u, v)
         elseif type == :hybrid
-            u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-            ϵ = [update_epsilon(u_average, 1, v, 1)]
+            ϵ = update_epsilon_single_stat(mean(u), v)
         end
 
         # --------------------------------
@@ -352,13 +348,14 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             population, u, ess = resample_population(population, u, δ)
             Σ_jump = estimate_jump_covariance(population, β)
-            if type == :single || type == :multi
-                # size(u,2) = 1 when type = :single, and size(u,2) = n_stats when type = :multi
-                ϵ = [update_epsilon(u, ui, v, size(u,2)) for ui in 1:size(u,2)]
+
+            # update epsilon
+            if type == :multi
+                ϵ = update_epsilon_multi_stats(u, v)
             elseif type == :hybrid
-                u_average = sum(u[:,ix] for ix in 1:n_stats)./n_stats
-                ϵ = [update_epsilon(u_average, 1, v, 1)]
+                ϵ = update_epsilon_single_stat(mean(u), v)
             end
+
             n_resampling += 1
         end
 
@@ -415,7 +412,7 @@ end
 ```
 sabc(f_dist::Function, prior::Distribution, args...;
       n_particles = 100, n_simulation = 10_000,
-      type = :single,
+      type = :multi,
       resample = 2*n_particles,
       v=1.0, β=0.8, δ=0.1,
       checkpoint_history = 1,
@@ -434,7 +431,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for XXX
 - `β = 0.8`: Tuning parameter for XXX
 - `δ = 0.1`: Tuning parameter for XXX
-- `type = :single`: Choose algorithm, either `:single` ,`:multi`, or `:hybrid`
+- `type = :multi`: Choose algorithm, either `:multi`, or `:hybrid`
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
@@ -447,7 +444,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              type = :single,
+              type = :multi,
               resample = 2*n_particles,
               v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
@@ -455,8 +452,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               show_checkpoint = is_logging(stderr) ? 100 : Inf,
               kwargs...)
 
-    if !(type == :single || type == :multi || type == :hybrid)
-        error("""Argument `type` must be :single, :multi, or :hybrid, not `$type`!""")
+    if !(type == :multi || type == :hybrid)
+        error("""Argument `type` must be :multi or :hybrid, not `$type`!""")
     end
 
 

@@ -17,7 +17,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
         @test_throws ErrorException sabc(f_dist, prior;
                                          n_particles = 100, n_simulation = 10)
 
-        for type in [:single, :multi, :hybrid]
+        for type in [:multi, :hybrid]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
@@ -54,7 +54,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
                                          n_particles = 100,
                                          n_simulation = 10)
 
-        for type in [:single, :multi, :hybrid]
+        for type in [:multi, :hybrid]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
@@ -91,11 +91,6 @@ end
             y_samp = rand(Normal(θ[1], 1), 10)
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
-
-        # type :single not possible
-        @test_throws ErrorException sabc(f_dist, prior;
-                                         n_particles = 100, n_simulation = 1000,
-                                         type = :single )
 
         for type in [:multi, :hybrid]
 
@@ -135,11 +130,6 @@ end
             y_samp = rand(Normal(θ[1], θ[2]), 10)
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
-
-        # type :single not possible
-        @test_throws ErrorException sabc(f_dist, prior;
-                                         n_particles = 100, n_simulation = 1000,
-                                         type = :single )
 
         for type in [:multi, :hybrid]
 
