@@ -51,10 +51,10 @@ res2 = update_population!(res, f_dist, prior;
 
 There are two ways `sabc` can inform about the progress of the ongoing inference run:
 
-- Progress bar. By default it is shown in interactive sessions. It can be disabled with the argument
+- **Progress bar** By default it is shown in interactive sessions. It can be disabled with the argument
   (`show_progressbar = false`)
 
-- Logging statements. The argument `show_checkpoint` controls how
+- **Logging statements** The argument `show_checkpoint` controls how
   often a summary of the current state is logged. For long running
   computations in a cluster environment this is more convenient
   than the progress bar.
@@ -69,6 +69,18 @@ global_logger(ConsoleLogger(stderr, Logging.Warn))
 ... run sabc() ...
 ```
 
-## How to disable multi-threading
+## Disable multi-threading
 
-- TODO
+`SimulatedAnnealingabc` parallelizes the computation internally
+with multi-threading via
+[`Polyester.jl``](https://github.com/JuliaSIMD/Polyester.jl). As
+described
+[here](https://github.com/JuliaSIMD/Polyester.jl?tab=readme-ov-file#disabling-polyester-threads)
+multi-threading can be disabled:
+
+```Julia
+result = SimulatedAnnealingABC.Polyester.disable_polyester_threads() do
+           sabc(f_dist, prior, y_obs; ,
+                 n_particles = 100_000, n_simulation = 500_000)
+end
+```
