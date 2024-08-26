@@ -39,6 +39,7 @@ mutable struct SABCstate
     n_simulation::Int           # number of simulations
     n_accept::Int               # number of accepted updates
     n_resampling::Int           # number of population resamplings
+    n_population_updates::Int   # number of population updates
 end
 
 """
@@ -69,6 +70,7 @@ function show(io::Base.IO, s::SABCresult)
     println(io, "Approximate posterior sample with $n_particles particles:")
     println(io, "  - algorithm: :$(s.state.algorithm)")
     println(io, "  - simulations used: $(s.state.n_simulation)")
+    println(io, "  - number of population updates: $(s.state.n_population_updates)")
     println(io, "  - average transformed distance: $mean_u")
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
     println(io, "  - population resampling: $(s.state.n_resampling)")
@@ -237,7 +239,7 @@ function initialization(f_dist, prior::Distribution, args...;
                       cdfs_dist_prior,
                       Σ_jump,
                       n_simulation,
-                      0, 1)  # n_accept set to 0, n_resampling to 1
+                      0, 1, 0)  # n_accept = 0, n_resampling = 1, n_population_updates = 0
 
     return SABCresult(population, u, distances_prior, state)
 
@@ -400,11 +402,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.n_simulation += n_updates
     state.n_accept = n_accept
     state.n_resampling = n_resampling
+    state.n_population_updates += n_population_updates
     population_state.population .= population
     population_state.u .= u
     population_state.ρ .= ρ
 
-    @info "All particles have been updated $(n_simulation ÷ n_particles) times."
+    @info "All particles have been updated $(n_population_updates) times."
     return population_state
 
 end

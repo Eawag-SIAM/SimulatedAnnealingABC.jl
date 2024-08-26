@@ -38,6 +38,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
                        algorithm = algorithm)
 
             @test res.state.n_simulation <= 1000
+            @test res.state.n_population_updates == 9
             @test length(res.population) == 100
 
             ## update existing population
@@ -45,6 +46,7 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
                                n_simulation = 1_000)
 
             @test res.state.n_simulation <= 2000
+            @test res.state.n_population_updates == 19
 
             ## update existing population with too few simulation, i.e.
             ##  n_simulation < n_particles
