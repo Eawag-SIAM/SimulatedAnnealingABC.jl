@@ -17,6 +17,20 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
         @test_throws ErrorException sabc(f_dist, prior;
                                          n_particles = 100, n_simulation = 10)
 
+        # illegal tuning parameter
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 10,
+                                         v = -0.1)
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 10,
+                                         β = -0.1)
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 10,
+                                         β = 1.1)
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 10,
+                                         δ = -0.1)
+
         for type in [:multi, :hybrid]
 
             res = sabc(f_dist, prior;

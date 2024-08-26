@@ -12,7 +12,7 @@ import Roots
 
 import Polyester
 
-using Dates
+import Dates
 using ProgressMeter
 
 include("cdf_estimators.jl")
@@ -92,8 +92,7 @@ function update_epsilon_single_stat(ū, v)
 end
 
 """
-Update ϵ
-Multi-epsilon:  new update rule
+Update ϵ for multi-epsilons. See eq(19-20) in Albert et al. (in preparatory).
 """
 function update_epsilon_multi_stats(u, v)
     n = size(u, 2)        # number of statistics
@@ -275,6 +274,10 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             show_checkpoint = is_logging(stderr) ? 100 : Inf,
                             kwargs...)
 
+    v <= 0 && error("Annealing speed `v` must be positive.")
+    (0 < β <= 1) || error("Mixing parameter `β` must be between zero and one.")
+    δ <= 0 && error("Resamping intensity `δ` must be positive.")
+
     state = population_state.state
     population = copy(population_state.population)
     u = copy(population_state.u)
@@ -428,9 +431,9 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
-- `v = 1.0`: Tuning parameter for XXX
-- `β = 0.8`: Tuning parameter for XXX
-- `δ = 0.1`: Tuning parameter for XXX
+- `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
+- `β = 0.8`: Tuning parameter for mixing. Between zero and one.
+- `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
 - `type = :hybrid`: Choose algorithm, either `:multi`, or `:hybrid`
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
