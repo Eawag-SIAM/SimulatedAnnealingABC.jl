@@ -31,11 +31,11 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
                                          n_particles = 100, n_simulation = 10,
                                          δ = -0.1)
 
-        for type in [:multi, :hybrid]
+        for algorithm in [:multi_eps, :single_eps]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
-                       type = type)
+                       algorithm = algorithm)
 
             @test res.state.n_simulation <= 1000
             @test length(res.population) == 100
@@ -68,11 +68,11 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
                                          n_particles = 100,
                                          n_simulation = 10)
 
-        for type in [:multi, :hybrid]
+        for algorithm in [:multi_eps, :single_eps]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
-                       type = type)
+                       algorithm = algorithm)
 
             @test res.state.n_simulation <= 1000
             @test length(res.population) == 100
@@ -106,12 +106,12 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        for type in [:multi, :hybrid]
+        for algorithm in [:multi_eps, :single_eps]
 
             ## Sample Posterior
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
-                       type = type);
+                       algorithm = algorithm);
 
             @test all(res.state.ϵ .< 1)
             @test res.state.n_simulation <= 1000
@@ -145,12 +145,12 @@ end
             (abs(0 - mean(y_samp)), abs(1 - mean(y_samp .^2)))
         end
 
-        for type in [:multi, :hybrid]
+        for algorithm in [:multi_eps, :single_eps]
 
             ## Sample Posterior
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
-                       type = type);
+                       algorithm = algorithm);
 
             @test all(res.state.ϵ .< 1)
 

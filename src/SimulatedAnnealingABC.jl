@@ -27,7 +27,7 @@ Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}             # epsilon = temperature
-    type::Symbol                   # the algorithm used
+    algorithm::Symbol                   # the algorithm used
 
     # Containers to store trajectories
     ϵ_history::Vector{Vector{Float64}}
@@ -67,7 +67,7 @@ function show(io::Base.IO, s::SABCresult)
                       sigdigits = 4)
 
     println(io, "Approximate posterior sample with $n_particles particles:")
-    println(io, "  - type: :$(s.state.type)")
+    println(io, "  - algorithm: :$(s.state.algorithm)")
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - average transformed distance: $mean_u")
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
@@ -86,7 +86,6 @@ end
 Update ϵ for a single statistics. See eq(31) in Albert et al., Statistics and Computing 25, 2015
 """
 function update_epsilon_single_stat(ū, v)
-
     ϵ_new = ū <= eps() ? zero(ū) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - ū^2, (0, ū))
     Float64[ϵ_new]
 end
@@ -164,12 +163,12 @@ See docs for `sabc`
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.0, β = 0.8, δ= 0.1, type = :hybrid, kwargs...)
+                        v = 1.0, β = 0.8, δ= 0.1, algorithm = :single_eps, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    @info "Initialization with '$(type)-ϵ'"
+    @info "Initialization for '$(algorithm)'"
 
     # ---------------------
     # Initialize containers
@@ -212,9 +211,9 @@ function initialization(f_dist, prior::Distribution, args...;
     population, u, ess = resample_population(population, u, δ)
 
     # initialize epsilon
-    if type == :multi
+    if algorithm == :multi_eps
         ϵ = update_epsilon_multi_stats(u, v)
-    elseif  type == :hybrid
+    elseif  algorithm == :single_eps
         ϵ = update_epsilon_single_stat(mean(u), v)
     end
 
@@ -231,7 +230,7 @@ function initialization(f_dist, prior::Distribution, args...;
                                 # and neglect the first call to f_dist ('initialization of containers')
 
     state = SABCstate(ϵ,
-                      type,
+                      algorithm,
                       ϵ_history,
                       ρ_history,
                       u_history,
@@ -284,7 +283,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     ρ = copy(population_state.ρ)
     n_stats = size(u,2)
 
-    @unpack ϵ, type, ϵ_history, ρ_history,
+    @unpack ϵ, algorithm, ϵ_history, ρ_history,
     u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
 
     n_particles = length(population)
@@ -338,9 +337,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         Σ_jump = estimate_jump_covariance(population, β)
 
-        if type == :multi
+        if algorithm == :multi_eps
             ϵ = update_epsilon_multi_stats(u, v)
-        elseif type == :hybrid
+        elseif algorithm == :single_eps
             ϵ = update_epsilon_single_stat(mean(u), v)
         end
 
@@ -353,9 +352,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             Σ_jump = estimate_jump_covariance(population, β)
 
             # update epsilon
-            if type == :multi
+            if algorithm == :multi_eps
                 ϵ = update_epsilon_multi_stats(u, v)
-            elseif type == :hybrid
+            elseif algorithm == :single_eps
                 ϵ = update_epsilon_single_stat(mean(u), v)
             end
 
@@ -415,7 +414,7 @@ end
 ```
 sabc(f_dist::Function, prior::Distribution, args...;
       n_particles = 100, n_simulation = 10_000,
-      type = :multi,
+      algorithm = :single_eps,
       resample = 2*n_particles,
       v=1.0, β=0.8, δ=0.1,
       checkpoint_history = 1,
@@ -434,7 +433,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
 - `β = 0.8`: Tuning parameter for mixing. Between zero and one.
 - `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
-- `type = :hybrid`: Choose algorithm, either `:multi`, or `:hybrid`
+- `algorithm = :single_eps`: Choose algorithm, either `:multi_eps`, or `:single_eps`. With `:single_eps` a global tolerance is used for all distances. Wit `:multi_eps` every distnace has it's own tolerance.
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
@@ -447,7 +446,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 """
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
-              type = :hybrid,
+              algorithm = :single_eps,
               resample = 2*n_particles,
               v=1.0, β=0.8, δ=0.1,
               checkpoint_history = 1,
@@ -455,8 +454,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
               show_checkpoint = is_logging(stderr) ? 100 : Inf,
               kwargs...)
 
-    if !(type == :multi || type == :hybrid)
-        error("""Argument `type` must be :multi or :hybrid, not `$type`!""")
+    if !(algorithm == :multi_eps || algorithm == :single_eps)
+        error("""Argument `algorithm` must be :multi_eps or :single_eps, not `$algorithm`!""")
     end
 
 
@@ -466,7 +465,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ, type = type, kwargs...)
+                                      v=v, β=β, δ=δ, algorithm = algorithm, kwargs...)
 
     # ------------------------------
     # Sampling
