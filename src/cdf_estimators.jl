@@ -14,18 +14,26 @@ using Interpolations: interpolate, extrapolate,
 Estimate the empirical cdf of data `x`
 smoothed by interpolation.
 
+**Note**, do not use this function outside of this package! It does not
+return a correct cdf estimation if x contains duplicates. (Which
+should be fine for the purpose here.)
+
 Returns a function.
 """
 function build_cdf(x::AbstractVector)
     # here x is a column of the prior distance matrix
     # i.e., all distances (for all particles) for one given stat
-    n = length(x)       # n = the number of particles
-    # this is the y-axis for the interpolation:
-    # note, we add a 0 and 1 probability points
-    probs = [0; [(k - 0.5)/n for k in 1:n]; 1]
+
     # this is the x-axis, including 0 and 1.5*(largest distance):
+    # we drop zeros because the `interpolate` cannot handle multiple observation at zero.
+    x = filter(e -> e > 0, x)
+
+    # add a single zero observation and a larger max observation
     a = 1.5
     values = [0; sort(x); maximum(x)*a]
+
+    # this is the y-axis for the interpolation:
+    probs = range(0, stop=1, length=length(values))
 
     # returns a function that given a distance computes a value between 0 and 1
     extrapolate(interpolate(values, probs,

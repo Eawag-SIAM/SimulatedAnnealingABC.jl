@@ -6,6 +6,28 @@ using Logging
 ENV["CI"] = true                # to disable progress bar
 global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
+@testset "cdf estimator" begin
+
+    x = rand(100) .* 4
+    cdf = SimulatedAnnealingABC.build_cdf(x)
+    @test cdf(0) <= sqrt(eps())
+    @test cdf(Inf) ≈ 1
+    @test all(diff(cdf(sort(rand(100)))) .>= 0)  # is cdf is monotonous?
+
+    # includes repetitions
+    cdf = SimulatedAnnealingABC.build_cdf([1, 2, 2, 3, 3, 3])
+    @test cdf(0) <= sqrt(eps())
+    @test cdf(Inf) ≈ 1
+    @test all(diff(cdf(sort(rand(100).*3))) .>= 0)
+
+    # inludes zero
+    cdf = SimulatedAnnealingABC.build_cdf([1, 0, 2, 0, 3])
+    @test cdf(0) <= sqrt(eps())
+    @test cdf(Inf) ≈ 1
+    @test all(diff(cdf(sort(rand(100).*3))) .>= 0)
+
+end
+
 @testset "Single summary statistics" verbose = true begin
     @testset "Sampling 1-dim" begin
 
