@@ -17,16 +17,14 @@ prior = product_distribution([Normal(0,2),   # theta[1]
 # Simulate some observation data
 y_obs = rand(Normal(2, 0.5), 10)
 
-# Define a function that simulate with my_stochastic_model and then
-# measure the distances of the simulated and the observed data with
+# Define a function that first simulates with `my_stochastic_model` and then
+# measures the distances of the simulated and the observed data with
 # two summary statistics
 function f_dist(θ; y_obs)
     y_sim = my_stochastic_model(θ, length(y_obs))
 
-    (
-        abs(mean(y_obs) - mean(y_sim)),
-        abs(sum(abs2, y_obs) - sum(abs2, y_sim))
-    )
+    (abs(mean(y_obs) - mean(y_sim)),
+     abs(sum(abs2, y_obs) - sum(abs2, y_sim)) )
 end
 
 
@@ -35,16 +33,16 @@ res = sabc(f_dist, prior;
            n_particles = 1000, n_simulation = 100_000, y_obs=y_obs)
 
 
-## Improve the results by running the inference for longer
+## Improve the result by running the inference for longer
 res2 = update_population!(res, f_dist, prior;
                           n_simulation = 50_000, y_obs=y_obs)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Approximate posterior sample with 1000 particles:
   - algorithm: :single_eps
   - simulations used: 150000
   - number of population updates: 149
-  - average transformed distance: 0.006653
-  - ϵ: [0.001223]
+  - average transformed distance: 0.005545
+  - ϵ: [0.0009617]
   - population resampling: 5
-  - acceptance rate: 0.06728
+  - acceptance rate: 0.07256
 The sample can be accessed with the field `population`.
 The history of ϵ can be accessed with the field `state.ϵ_history`.
 </code></pre><h2 id="Logging-and-progress-bar"><a class="docs-heading-anchor" href="#Logging-and-progress-bar">Logging and progress bar</a><a id="Logging-and-progress-bar-1"></a><a class="docs-heading-anchor-permalink" href="#Logging-and-progress-bar" title="Permalink"></a></h2><p>There are two ways <code>sabc</code> can inform about the progress of the ongoing inference run:</p><ul><li><p><strong>Progress bar</strong> By default it is shown in interactive sessions. It can be disabled with the argument (<code>show_progressbar = false</code>)</p></li><li><p><strong>Logging statements</strong> The argument <code>show_checkpoint</code> controls how often a summary of the current state is logged. For long running computations in a cluster environment this is more convenient than the progress bar.</p></li></ul><p>You can set the logging level to <code>Warn</code> to suppress all logging statements:</p><pre><code class="language-Julia hljs">using Logging
@@ -53,4 +51,4 @@ global_logger(ConsoleLogger(stderr, Logging.Warn))
 ... run sabc() ...</code></pre><h2 id="Disable-multi-threading"><a class="docs-heading-anchor" href="#Disable-multi-threading">Disable multi-threading</a><a id="Disable-multi-threading-1"></a><a class="docs-heading-anchor-permalink" href="#Disable-multi-threading" title="Permalink"></a></h2><p><code>SimulatedAnnealingabc</code> parallelizes the computation internally with multi-threading via <a href="https://github.com/JuliaSIMD/Polyester.jl"><code>Polyester.jl</code>`</a>. As described <a href="https://github.com/JuliaSIMD/Polyester.jl?tab=readme-ov-file#disabling-polyester-threads">here</a> multi-threading can be disabled:</p><pre><code class="language-Julia hljs">result = SimulatedAnnealingABC.Polyester.disable_polyester_threads() do
            sabc(f_dist, prior, y_obs; ,
                  n_particles = 100_000, n_simulation = 500_000)
-end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« SimulatedAnnealingABC</a><a class="docs-footer-nextpage" href="../example/">Worked Example »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Thursday 19 September 2024 14:03">Thursday 19 September 2024</span>. Using Julia version 1.10.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« SimulatedAnnealingABC</a><a class="docs-footer-nextpage" href="../example/">Worked Example »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Monday 23 September 2024 13:23">Monday 23 September 2024</span>. Using Julia version 1.10.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
