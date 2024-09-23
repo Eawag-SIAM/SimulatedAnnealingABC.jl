@@ -428,7 +428,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 # Simulated Annealing Approximate Bayesian Inference Algorithm
 
 ## Arguments
-- `f_dist`: Function that one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector.
+- `f_dist`: Function that returns one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector. See below for details.
 - `prior`: A `Distribution` defining the prior.
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
@@ -443,6 +443,29 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
                                 By default disabled for for interactive use.
 - `kwargs...`: Further arguments passed to `f_dist``
+
+## Details on `f_dist`
+
+Given the observation ``D`` and a stochastic model ``f(θ)`` that provides a random sample from the likelihood ``p(D|θ)``, the user provided function `f_dist` must be defined in one of the following ways depending on the algorithm used.
+
+###  `algorithm = :single_eps`
+
+In this case `sabc` expects that `f_dist` returns a positive scalar defined as:
+
+```f_dist(θ) = d(f(θ), D)```
+
+where  ``d()`` is a distance function. In practice often we want to compute this distance between summary statistics. If ``s()`` computes one or multiple statistics of the data, `f_dist` becomes:
+
+```f_dist(θ) = d(s(f(θ)), s(D))```
+
+Note, in this situation it is up to the user to ensure that the distance function ``d`` weights the different summary statistics meaningfully.
+
+###  `algorithm = :multi_eps`
+
+With the multi epsilon we can leave the weighting to the sampling algorithm. This introduces a seperate tolerance for each statistics. If we have `K` summary statistics, `f_dist` must return `K` distances:
+
+```f_dist(θ) = [ d_i(S_i(f(θ)), S_i(D)) for i in 1:k ]```
+
 
 ## Return
 - An object of type `SABCresult`

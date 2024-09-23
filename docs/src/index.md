@@ -4,17 +4,30 @@ CurrentModule = SimulatedAnnealingABC
 
 # SimulatedAnnealingABC
 
-Documentation for [SimulatedAnnealingABC](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl).
+Documentation for [SimulatedAnnealingABC.jl](https://github.com/Eawag-SIAM/SimulatedAnnealingABC.jl).
 
 This package provides different SimulatedAnnealingABC (SABC)
-algorithms for Approximate Bayesian Computation (ABC) (sometimes also called
-_simulation-based inference_ or _likelihood-free inference_).
+algorithms for Approximate Bayesian Computation (ABC). Other terms
+that are sometimes used for ABC are _simulation-based inference_ or
+_likelihood-free inference_.
+
+ABC is a suitable apporach for model for which the evaluation of the
+likelihood function ``p(D \mid θ)`` is expensive but sampling from the
+likelihood is cheap. This is often the case for stochastic models with
+unobserved random states ``z``:
+
+``p(D \mid θ) = \int p(D \mid z, θ) p(z) \, \text{d}z``
+
+If ``z`` is high-dimensional, the integration may become so prohibitively
+expensive that conventional MCMC algorithms cannot be used.
+
 
 !!! note
 
-    Can you evaluate the density of your posterior? Then you should
+    Can you evaluate the density of your posterior? Can you write your
+    model in `Turing.jl`? Then you should
     most likely **not** be using this or any other ABC package!
-    Conventional MCMC algorithm will be much more efficient.
+    Conventional MCMC algorithms will be much more efficient.
 
 
 
