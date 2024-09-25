@@ -10,16 +10,17 @@ This package provides different SimulatedAnnealingABC (SABC)
 algorithms for Approximate Bayesian Computation (ABC). Other terms
 that are sometimes used for ABC are _simulation-based inference_ or
 _likelihood-free inference_.
+:
 
-ABC is a suitable apporach for model for which the evaluation of the
-likelihood function ``p(D \mid θ)`` is expensive but sampling from the
-likelihood is cheap. This is often the case for stochastic models with
-unobserved random states ``z``:
+ABC is well-suited for models where evaluating the likelihood function
+``p(D \mid θ)`` is computationally expensive, but sampling from the
+likelihood is relatively easy. This is often true for stochastic
+models with unobserved random states ``z``:
 
 ``p(D \mid θ) = \int p(D \mid z, θ) p(z) \, \text{d}z``
 
-If ``z`` is high-dimensional, the integration may become so prohibitively
-expensive that conventional MCMC algorithms cannot be used.
+If ``z`` is high-dimensional, the integration may become so computational
+expensive that conventional MCMC algorithms are no longer feasible.
 
 
 !!! note

@@ -18,7 +18,7 @@ makedocs(;
     pages=[
         "index.md",
         "usage.md",
-        "Worked Example" => "example.md",
+        "Example" => "example.md",
         "API" => "api.md",
         "Related packages" => "related.md"
     ],
