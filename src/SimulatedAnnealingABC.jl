@@ -27,7 +27,7 @@ Holds state of algorithm
 """
 mutable struct SABCstate
     ϵ::Vector{Float64}             # epsilon = temperature
-    algorithm::Symbol                   # the algorithm used
+    algorithm::Symbol              # the algorithm used
 
     # Containers to store trajectories
     ϵ_history::Vector{Vector{Float64}}
@@ -50,6 +50,8 @@ Holds results from a SABC run with fields:
 - `state`: state of algorithm
 
 The history of ϵ can be accessed with the field `state.ϵ_history`.
+The history of ρ can be accessed with the field `state.ρ_history`.
+The history of u can be accessed with the field `state.u_history`.
 """
 struct SABCresult{T, S}
     population::Vector{T}
@@ -66,17 +68,18 @@ function show(io::Base.IO, s::SABCresult)
     mean_u = round(mean(s.u), sigdigits = 4)
     acc_rate =  round(s.state.n_accept / (s.state.n_simulation - n_particles),
                       sigdigits = 4)
-
     println(io, "Approximate posterior sample with $n_particles particles:")
     println(io, "  - algorithm: :$(s.state.algorithm)")
     println(io, "  - simulations used: $(s.state.n_simulation)")
     println(io, "  - number of population updates: $(s.state.n_population_updates)")
     println(io, "  - average transformed distance: $mean_u")
     println(io, "  - ϵ: $(round.(s.state.ϵ, sigdigits=4))")
-    println(io, "  - population resampling: $(s.state.n_resampling)")
+    println(io, "  - number of population resamplings: $(s.state.n_resampling)")
     println(io, "  - acceptance rate: $(acc_rate)")
     println(io, "The sample can be accessed with the field `population`.")
     println(io, "The history of ϵ can be accessed with the field `state.ϵ_history`.")
+    println(io, "The history of ρ can be accessed with the field `state.ρ_history`.")
+    println(io, "The history of u can be accessed with the field `state.u_history`.")
 end
 
 # -------------------------------------------
@@ -93,7 +96,7 @@ function update_epsilon_single_stat(ū, v)
 end
 
 """
-Update ϵ for multi-epsilons. See eq(19-20) in Albert et al. (in preparatory).
+Update ϵ for multi-epsilons. See eq(19-20) in Albert et al. (in preparation)
 """
 function update_epsilon_multi_stats(u, v)
     n = size(u, 2)        # number of statistics
@@ -120,10 +123,9 @@ end
 Resample population
 """
 function resample_population(population, u, δ)
-
     n = length(population)
-    u_means = mean(u, dims=1)
-    w = exp.(-sum(u[:,i] .* δ ./ u_means[i] for i in 1:size(u, 2)))
+    ū = mean(u, dims=1)
+    w = exp.(-sum(u[:,i] .* δ ./ ū[i] for i in 1:size(u, 2)))
     # Choose indexes based on weights w
     idx_resampled = sample(1:n, weights(w), n, replace=true)
     # Apply selected indexes to population and u's
@@ -160,7 +162,7 @@ proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 ## Arguments
 See docs for `sabc`
 
-## Return
+## Returns
 - An object of type `SABCresult`
 """
 function initialization(f_dist, prior::Distribution, args...;
@@ -194,7 +196,6 @@ function initialization(f_dist, prior::Distribution, args...;
     end
     ρ_history = [[mean(ic) for ic in eachcol(distances_prior)]]
 
-
     # ------------------
     # Estimate the cdf of ρ under the prior
 
@@ -223,10 +224,12 @@ function initialization(f_dist, prior::Distribution, args...;
     u_history = [[mean(ic) for ic in eachcol(u)]]
     ϵ_history = [copy(ϵ)]
 
+    # ------------------
+    # estimate jump covariance
     Σ_jump = estimate_jump_covariance(population, β)
 
     # ---------------------
-    # Collect parameters and states of the algorithm
+    # Collect parameters and state of the algorithm
 
     n_simulation = n_particles  # N.B.: we consider only n_particles draws from the prior
                                 # and neglect the first call to f_dist ('initialization of containers')
@@ -290,8 +293,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     n_particles = length(population)
 
-    n_population_updates = n_simulation ÷ n_particles  # populations update = total simulations / particles
-    n_updates = n_population_updates * n_particles     # number of calls to `f_dist`
+    n_population_updates = n_simulation ÷ n_particles  # population updates = total simulations / particles
+    n_updates = n_population_updates * n_particles     # number of calls to `f_dist` (individual particle updates)
     last_checkpoint_epsilon = 0                        # set checkpoint counter to zero
 
     # to estimate ETA
@@ -303,6 +306,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
                       output = stderr, enabled = show_progressbar)
     generate_showvalues(ϵ, u) = () -> [("ϵ", round.(ϵ, sigdigits=4)), ("average transformed distance", round.(mean(u), sigdigits=4))]
+    
     for ix in 1:n_population_updates
 
         # ----------------------------------------------------------
