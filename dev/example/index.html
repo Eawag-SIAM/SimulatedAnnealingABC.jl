@@ -61,7 +61,7 @@ sim = stochastic_SIR(θtrue; S0=99, I0=1, R0=0, t_max=160)
 plot(sim.time, sim.S, label=&quot;Susceptible&quot;, xlabel=&quot;Time (days)&quot;, ylabel=&quot;Number of Individuals&quot;,
      title=&quot;Stochastic SIR Model&quot;, linewidth=2, linetype=:steppre)
 plot!(sim.time, sim.I, label=&quot;Infected&quot;, linewidth=2, linetype=:steppre)
-plot!(sim.time, sim.R, label=&quot;Recovered&quot;, linewidth=2, linetype=:steppre)</code></pre><img src="1aae715f.svg" alt="Example block output"/><p>The observation are defined as follows:</p><pre><code class="language-julia hljs">data_obs = (
+plot!(sim.time, sim.R, label=&quot;Recovered&quot;, linewidth=2, linetype=:steppre)</code></pre><img src="45eac225.svg" alt="Example block output"/><p>The observation are defined as follows:</p><pre><code class="language-julia hljs">data_obs = (
     total_infected = sim.R[end],
     peak_infected = maximum(sim.I),
     t_peak = sim.time[argmax(sim.I)]
@@ -93,10 +93,12 @@ f_dist_single_stat(θ, data_obs) = sum(f_dist_multi_stats(θ, data_obs))</code><
   - number of population updates: 39
   - average transformed distance: 0.045
   - ϵ: [0.01483]
-  - population resampling: 4
+  - number of population resamplings: 4
   - acceptance rate: 0.2278
 The sample can be accessed with the field `population`.
 The history of ϵ can be accessed with the field `state.ϵ_history`.
+The history of ρ can be accessed with the field `state.ρ_history`.
+The history of u can be accessed with the field `state.u_history`.
 </code></pre><pre><code class="language-julia hljs">res_2 = sabc(f_dist_multi_stats, prior, data_obs;
              n_simulation = 200_000,
              n_particles = 5000,
@@ -106,10 +108,12 @@ The history of ϵ can be accessed with the field `state.ϵ_history`.
   - number of population updates: 39
   - average transformed distance: 0.05689
   - ϵ: [0.00217, 0.002854, 0.006327]
-  - population resampling: 2
+  - number of population resamplings: 2
   - acceptance rate: 0.1376
 The sample can be accessed with the field `population`.
 The history of ϵ can be accessed with the field `state.ϵ_history`.
+The history of ρ can be accessed with the field `state.ρ_history`.
+The history of u can be accessed with the field `state.u_history`.
 </code></pre><p>Finally, we plot the posterior parameter distribution. If a larger number of iterations is used, the difference between the two algorithm would become smaller.</p><pre><code class="language-julia hljs">pop_1 = stack(res_1.population)
 pop_2 = stack(res_2.population)
 
@@ -125,4 +129,4 @@ p2 = scatter(pop_2[1,:], pop_2[2,:], title=&quot;multible stats&quot;,
              markerstrokewidth = 0);
 scatter!(p2, θtrue[1:1], θtrue[2:2], markersize = 2);
 
-plot(p1, p2, xlab = &quot;β&quot;, ylab = &quot;γ&quot;, legend=false)</code></pre><img src="39901a33.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Wednesday 25 September 2024 08:36">Wednesday 25 September 2024</span>. Using Julia version 1.10.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+plot(p1, p2, xlab = &quot;β&quot;, ylab = &quot;γ&quot;, legend=false)</code></pre><img src="22bbcd23.svg" alt="Example block output"/></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../usage/">« Usage</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.7.0 on <span class="colophon-date" title="Thursday 26 September 2024 09:48">Thursday 26 September 2024</span>. Using Julia version 1.10.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
