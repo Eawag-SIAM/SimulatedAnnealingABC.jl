@@ -172,7 +172,7 @@ function initialization(f_dist, prior::Distribution, args...;
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
-    @info "Initialization for '$(algorithm)'"
+    @info "Initialization for '$(algorithm)'"; flush(stderr)
 
     # ---------------------
     # Initialize containers
@@ -373,8 +373,8 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         if ix % show_checkpoint == 0
             eta = ((Dates.now() - t_start) ÷ ix) * (n_population_updates - ix)
             etastr = eta > Dates.Second(1) ? Dates.canonicalize(round(eta, Dates.Second)) : "< 1 Second"
-            @info "Update $ix of $n_population_updates. average transformed distance: $(round.(mean(u), sigdigits=4)), " *
-                "ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(etastr)"
+            @info "Update $ix of $n_population_updates. Average transformed distance: $(round.(mean(u), sigdigits=4)), " *
+                "ϵ: $(round.(ϵ, sigdigits=4)), ETA: $(etastr)"; flush(stderr)
         end
 
         # update ϵ_history
@@ -411,7 +411,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     population_state.u .= u
     population_state.ρ .= ρ
 
-    @info "All particles have been updated $(n_population_updates) times."
+    @info "All particles have been updated $(n_population_updates) times."; flush(stderr)
     return population_state
 
 end
