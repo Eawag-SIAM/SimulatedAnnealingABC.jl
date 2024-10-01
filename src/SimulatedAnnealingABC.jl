@@ -318,7 +318,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        Polyester.@batch per=thread reduction = ((+, n_accept), ) for i in eachindex(population)
+        Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
