@@ -193,7 +193,6 @@ function initialization(f_dist, prior::Distribution, args...;
     # Build prior sample
 
     Polyester.@batch for i in 1:n_particles
-        @info "Building prior sample"; flush(stderr)
         ## sample
         θ = rand(prior)
         ρinit = f_dist(θ, args...; kwargs...)
@@ -319,7 +318,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
+        Polyester.@batch per=thread reduction = ((+, n_accept), ) for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
