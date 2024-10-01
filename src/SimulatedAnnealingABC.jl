@@ -14,6 +14,7 @@ import Polyester
 using ThreadPinning
 ThreadPinning.Prefs.set_os_warning(false)
 if Sys.islinux()
+    @info "I am ThreadPinning - Number of cores: $(Threads.nthreads())"
     pinthreads(:cores)
 end
 
@@ -192,6 +193,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # Build prior sample
 
     Polyester.@batch for i in 1:n_particles
+        @info "Building prior sample"
         ## sample
         θ = rand(prior)
         ρinit = f_dist(θ, args...; kwargs...)
