@@ -175,9 +175,12 @@ function initialization(f_dist, prior::Distribution, args...;
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
     @info "Initialization for '$(algorithm)'"; flush(stderr)
-    if Sys.islinux()
-        @info "I am ThreadPinning - Number of cores: $(Threads.nthreads())"; flush(stderr)
-        pinthreads(:cores)
+    if Threads.nthreads() > 1
+        BLAS.set_num_threads(1)
+        if Sys.islinux()
+            @info "I am ThreadPinning - Number of cores: $(Threads.nthreads())"; flush(stderr)
+            pinthreads(:cores)
+        end
     end
 
     # ---------------------
@@ -320,7 +323,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
 
-            println("I am thread ", Threads.threadid()); flush(stderr)
             # proposal
             θproposal = proposal(population[i], Σ_jump)
 
