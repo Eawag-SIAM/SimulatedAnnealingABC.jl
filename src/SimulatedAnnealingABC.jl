@@ -320,6 +320,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
 
+            println("I am thread ", Threads.threadid()); flush(stderr)
             # proposal
             θproposal = proposal(population[i], Σ_jump)
 
