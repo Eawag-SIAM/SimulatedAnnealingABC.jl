@@ -13,11 +13,10 @@ ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-julia = "^1.9"
-
 Distributions = "^0.25"
 Interpolations = "^0.15"
 Polyester = "^0.7"
@@ -25,6 +24,7 @@ ProgressMeter = "^1"
 Roots = "^2.1"
 StatsBase = "^0.34"
 UnPack = "^1"
+julia = "^1.9"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

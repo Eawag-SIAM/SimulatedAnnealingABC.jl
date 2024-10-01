@@ -11,6 +11,11 @@ using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 
 import Polyester
+using ThreadPinning
+ThreadPinning.Prefs.set_os_warning(false)
+if Sys.islinux()
+    pinthreads(:cores)
+end
 
 import Dates
 using ProgressMeter
