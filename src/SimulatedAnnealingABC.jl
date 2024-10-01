@@ -13,10 +13,6 @@ import Roots
 import Polyester
 using ThreadPinning
 ThreadPinning.Prefs.set_os_warning(false)
-if Sys.islinux()
-    @info "I am ThreadPinning - Number of cores: $(Threads.nthreads())"
-    pinthreads(:cores)
-end
 
 import Dates
 using ProgressMeter
@@ -179,6 +175,10 @@ function initialization(f_dist, prior::Distribution, args...;
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
 
     @info "Initialization for '$(algorithm)'"; flush(stderr)
+    if Sys.islinux()
+        @info "I am ThreadPinning - Number of cores: $(Threads.nthreads())"; flush(stderr)
+        pinthreads(:cores)
+    end
 
     # ---------------------
     # Initialize containers
@@ -193,7 +193,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # Build prior sample
 
     Polyester.@batch for i in 1:n_particles
-        @info "Building prior sample"
+        @info "Building prior sample"; flush(stderr)
         ## sample
         θ = rand(prior)
         ρinit = f_dist(θ, args...; kwargs...)
