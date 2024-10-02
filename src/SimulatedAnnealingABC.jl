@@ -324,23 +324,23 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
 
             # proposal
-            θproposal = proposal(population[i], Σ_jump)
+            @inbounds θproposal = proposal(population[i], Σ_jump)
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
                 ρ_proposal = f_dist(θproposal, args...; kwargs...)
                 u_proposal = cdfs_dist_prior(ρ_proposal)
 
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                @inbounds accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
                     exp(sum((u[i,:] .- u_proposal) ./ ϵ))
             else
                 accept_prob = 0.0
             end
 
             if rand() < accept_prob
-                population[i] = θproposal
-                u[i,:] .= u_proposal
-                ρ[i,:] .= ρ_proposal
+                @inbounds population[i] = θproposal
+                @inbounds u[i,:] .= u_proposal
+                @inbounds ρ[i,:] .= ρ_proposal
                 n_accept +=1
             end
 
