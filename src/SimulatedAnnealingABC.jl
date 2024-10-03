@@ -310,7 +310,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        n_accept_tmp = Threads.Atomic{Int64}(0)
+        n_accept_tmp = Threads.Atomic{Int}(0)
 
         Threads.@threads for i in eachindex(population)
 
