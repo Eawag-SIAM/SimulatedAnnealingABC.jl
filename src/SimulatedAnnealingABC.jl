@@ -10,8 +10,6 @@ using StatsBase: mean, cov, sample, weights
 using Distributions: Distribution, pdf, MvNormal, Normal
 import Roots
 
-import Polyester
-
 import Dates
 using ProgressMeter
 
@@ -186,7 +184,7 @@ function initialization(f_dist, prior::Distribution, args...;
     # ------------------
     # Build prior sample
 
-    Polyester.@batch for i in 1:n_particles
+    Threads.@threads for i in 1:n_particles
         ## sample
         θ = rand(prior)
         ρinit = f_dist(θ, args...; kwargs...)
@@ -306,13 +304,15 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     pmeter = Progress(n_population_updates; desc = "$n_population_updates population updates:",
                       output = stderr, enabled = show_progressbar)
     generate_showvalues(ϵ, u) = () -> [("ϵ", round.(ϵ, sigdigits=4)), ("average transformed distance", round.(mean(u), sigdigits=4))]
-    
+
     for ix in 1:n_population_updates
 
         # ----------------------------------------------------------
         # update particles
 
-        Polyester.@batch reduction = ((+, n_accept), ) for i in eachindex(population)
+        n_accept_tmp = Threads.Atomic{Int64}(0)
+
+        Threads.@threads for i in eachindex(population)
 
             # proposal
             θproposal = proposal(population[i], Σ_jump)
@@ -332,11 +332,12 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 population[i] = θproposal
                 u[i,:] .= u_proposal
                 ρ[i,:] .= ρ_proposal
-                n_accept +=1
+                Threads.atomic_add!(n_accept_tmp, 1)
             end
 
         end
 
+        n_accept += n_accept_tmp[]
 
         # ----------------------------------------------------------
         # Update epsilon and jump distribution
