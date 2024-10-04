@@ -65,19 +65,3 @@ global_logger(ConsoleLogger(stderr, Logging.Warn))
 
 ... run sabc() ...
 ```
-
-## Disable multi-threading
-
-`SimulatedAnnealingabc` parallelizes the computation internally
-with multi-threading via
-[`Polyester.jl``](https://github.com/JuliaSIMD/Polyester.jl). As
-described
-[here](https://github.com/JuliaSIMD/Polyester.jl?tab=readme-ov-file#disabling-polyester-threads)
-multi-threading can be disabled:
-
-```Julia
-result = SimulatedAnnealingABC.Polyester.disable_polyester_threads() do
-           sabc(f_dist, prior, y_obs; ,
-                 n_particles = 100_000, n_simulation = 500_000)
-end
-```
