@@ -86,17 +86,17 @@ end
 
 
 """
-Update ϵ for a single statistics. See eq(31) in Albert et al., Statistics and Computing 25, 2015
+Update a single ϵ. See eq(31) in Albert et al., Statistics and Computing 25, 2015
 """
-function update_epsilon_single_stat(ū, v)
+function update_epsilon_single_eps(ū, v)
     ϵ_new = ū <= eps() ? zero(ū) : Roots.find_zero(ϵ -> ϵ^2 + v * ϵ^(3/2) - ū^2, (0, ū))
     Float64[ϵ_new]
 end
 
 """
-Update ϵ for multi-epsilons. See eq(19-20) in Albert et al. (in preparation)
+Update multible ϵ. See eq(19-20) in Albert et al. (in preparation)
 """
-function update_epsilon_multi_stats(u, v)
+function update_epsilon_multi_eps(u, v)
     n = size(u, 2)        # number of statistics
     ū = mean(u, dims=1)
     cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
@@ -213,9 +213,9 @@ function initialization(f_dist, prior::Distribution, args...;
 
     # initialize epsilon
     if algorithm == :multi_eps
-        ϵ = update_epsilon_multi_stats(u, v)
+        ϵ = update_epsilon_multi_eps(u, v)
     elseif  algorithm == :single_eps
-        ϵ = update_epsilon_single_stat(mean(u), v)
+        ϵ = update_epsilon_single_eps(mean(u), v)
     end
 
     # store
@@ -345,9 +345,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         Σ_jump = estimate_jump_covariance(population, β)
 
         if algorithm == :multi_eps
-            ϵ = update_epsilon_multi_stats(u, v)
+            ϵ = update_epsilon_multi_eps(u, v)
         elseif algorithm == :single_eps
-            ϵ = update_epsilon_single_stat(mean(u), v)
+            ϵ = update_epsilon_single_eps(mean(u), v)
         end
 
         # --------------------------------
@@ -360,9 +360,9 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
             # update epsilon
             if algorithm == :multi_eps
-                ϵ = update_epsilon_multi_stats(u, v)
+                ϵ = update_epsilon_multi_eps(u, v)
             elseif algorithm == :single_eps
-                ϵ = update_epsilon_single_stat(mean(u), v)
+                ϵ = update_epsilon_single_eps(mean(u), v)
             end
 
             n_resampling += 1
@@ -433,7 +433,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 # Simulated Annealing Approximate Bayesian Inference Algorithm
 
 ## Arguments
-- `f_dist`: Function that returns one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector. See below for details.
+- `f_dist`: Function that returns one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector.
 - `prior`: A `Distribution` defining the prior.
 - `args...`: Further arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
@@ -448,29 +448,6 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
                                 By default disabled for for interactive use.
 - `kwargs...`: Further arguments passed to `f_dist``
-
-## Details on `f_dist`
-
-Given the observation ``D`` and a stochastic model ``f(θ)`` that provides a random sample from the likelihood ``p(D|θ)``, the user provided function `f_dist` must be defined in one of the following ways depending on the algorithm used.
-
-###  `algorithm = :single_eps`
-
-In this case `sabc` expects that `f_dist` returns a positive scalar defined as:
-
-```f_dist(θ) = d(f(θ), D)```
-
-where  ``d()`` is a distance function. In practice often we want to compute this distance between summary statistics. If ``s()`` computes one or multiple statistics of the data, `f_dist` becomes:
-
-```f_dist(θ) = d(s(f(θ)), s(D))```
-
-Note, in this situation it is up to the user to ensure that the distance function ``d`` weights the different summary statistics meaningfully.
-
-###  `algorithm = :multi_eps`
-
-With the multi epsilon we can leave the weighting to the sampling algorithm. This introduces a seperate tolerance for each statistics. If we have `K` summary statistics, `f_dist` must return `K` distances:
-
-```f_dist(θ) = [ d_i(S_i(f(θ)), S_i(D)) for i in 1:k ]```
-
 
 ## Return
 - An object of type `SABCresult`
