@@ -2,7 +2,8 @@
 
 ## Getting started
 
-A minimal example how to use this package for inference:
+This is a minimal example using this package for inference. See
+the example section for more in-depth explanations.
 
 ```@example
 using SimulatedAnnealingABC

@@ -11,63 +11,17 @@ _likelihood-free inference_). The algorithms are based on simulated
 annealing.
 
 > [!NOTE]
-> Can you evaluate the density of your posterior? Then you should most
+> Can you evaluate the probability density of your posterior? Can you write your
+> model in `Turing.jl`? Then you should most
 > likely **not** be using this or any other ABC package!
 > Conventional MCMC algorithm will be much more efficient.
 
 
-## Installation
+## Documentation
 
-```Julia
-] add SimulatedAnnealingABC
-```
-
-Note, Julia 1.9 or newer is needed.
-
-
-## Usage
-
-A minimal example how to use this package for approximate Bayesian inference:
-
-```julia
-using SimulatedAnnealingABC
-using Distributions
-
-# Define a stochastic model.
-# Your real model should be so complex, that it would be too
-# complicated to compute it's likelihood function.
-function my_stochastic_model(θ, n)
-    rand(Normal(θ[1], θ[2]), n)
-end
-
-# define prior of the parameters
-prior = product_distribution([Normal(0,2),   # theta[1]
-                              Uniform(0,2)]) # theta[2]
-
-
-# Simulate some observation data
-y_obs = rand(Normal(2, 0.5), 10)
-
-# Define a function that first simulates with `my_stochastic_model` and then
-# measures the distances of the simulated and the observed data with
-# two summary statistics
-function f_dist(θ; y_obs)
-    y_sim = my_stochastic_model(θ, length(y_obs))
-
-    (abs(mean(y_obs) - mean(y_sim)),
-     abs(sum(abs2, y_obs) - sum(abs2, y_sim)) )
-end
-
-
-## Sample Posterior
-res = sabc(f_dist, prior;
-           n_particles = 1000, n_simulation = 100_000, y_obs=y_obs)
-
-
-## Improve the result by running the inference for longer
-res2 = update_population!(res, f_dist, prior;
-                          n_simulation = 50_000, y_obs=y_obs)
-```
+See
+[here](https://eawag-siam.github.io/SimulatedAnnealingABC.jl/dev/) for
+documentation and examples.
 
 
 ## References

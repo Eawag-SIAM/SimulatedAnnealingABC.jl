@@ -1,12 +1,14 @@
 # Example
 
-We use a stochastic SIR model to demonstrate the usage of `SimulatedAnnealingABC.jl`.
+We use a simple stochastic SIR model to demonstrate the usage of
+`SimulatedAnnealingABC.jl` for Bayesian inference.
 
 ## Stochastic SIR Model
 
-A stochastic SIR (Susceptible-Infected-Recovered) model describes
+The stochastic SIR (Susceptible-Infected-Recovered) model describes
 the spread of an infectious disease in a closed population of ``N``
-individuals. Transmission and recovery events happen at random times. The model parameters are:
+individuals. Transmission and recovery events happen at random
+times. The model has two parameters:
 
 - ``\beta``: Infection rate per contact per unit time.
 - ``\gamma``: Recovery rate per infected individual per unit time.
@@ -35,19 +37,23 @@ distributed:
 We cannot observe every individual. Instead, let's assume that we
 observe three key figures:
 
-1. the total number infected,
-2. the number of infected at the peak of the wave, and
-3.  the time point of the wave.
+1. the total number infected individuals,
+2. the number of infected individuals at the peak of the wave, and
+3. the time point when the wave peaked.
 
-Note, that it would be very difficult to derive the likelihood
-function of the stochastic SIR model for this kind of
-observations. Therefore this inference problem is a good fit for ABC algorithms.
+Note, that it would be very difficult to derive the density of the likelihood
+function ``p(\text{observations} \mid \gamma, \beta)`` for the stochastic SIR model for this kind of
+observations. At the same time it is not difficult to simulate such
+data from our model. Therefore ABC algorithms are a good fit for this inference problem.
 
 #### Prior
 
-For Bayesian inference we also need to define a prior distribution for the parameters (assuming independence):
+For Bayesian inference we need to define a prior distribution for
+the parameters. Let's assume the prior for the parameters are
+independent uniform distributions:
 - Transmission rate: ``\beta \sim \text{Uniform}(0.1, 1)``
 - Recovered rate: ``\gamma \sim \text{Uniform}(0.05, 0.5)``
+
 
 
 
@@ -117,7 +123,7 @@ end
 nothing  # hide
 ```
 
-For the sake of this example we simulate data. The random seed has a large influence on how the simulation
+For the sake of this example we simulate data. Note, the random seed has a large influence on how the simulation
 result looks like.
 ```@example 1
 # "true" parameters
@@ -132,7 +138,7 @@ plot(sim.time, sim.S, label="Susceptible", xlabel="Time (days)", ylabel="Number 
 plot!(sim.time, sim.I, label="Infected", linewidth=2, linetype=:steppre)
 plot!(sim.time, sim.R, label="Recovered", linewidth=2, linetype=:steppre)
 ```
-The observation are defined as follows:
+The observations are defined as follows:
 ```@example 1
 data_obs = (
     total_infected = sim.R[end],
@@ -141,11 +147,11 @@ data_obs = (
 )
 ```
 
-To use `sabc` we need to define a function that returns the
-distance(s) between a random simulation of our with parameter
-``\theta`` and the observed data. Here we define two functions, the
-first one returns the distance of each observed statistics and the
-second one aggregates this into a single distance.
+To use `sabc` we need to define a function that returns one or more
+distances between a random simulation from out model with parameter
+``\theta`` and the observed data. Here we define two functions for demonstration. The
+first one returns the distance of each observed statistics separately and the
+second one aggregates them all into a single distance.
 ```@example 1
 function f_dist_multi_stats(θ, data_obs)
     # run model
@@ -156,7 +162,6 @@ function f_dist_multi_stats(θ, data_obs)
     sim_t_peak = sim.time[argmax(sim.I)]
 
     # compute distance of summary statistics
-
     dists = (abs2(sim_total_infected - data_obs.total_infected),
              abs2(sim_peak_infected - data_obs.peak_infected),
              abs2(sim_t_peak - data_obs.t_peak))
@@ -164,10 +169,14 @@ function f_dist_multi_stats(θ, data_obs)
 end
 
 # For single stat version we need to aggregate the statistics.
-# Here we give the same weight to each statistic.
+# Here we give the same weight to each statistic
 f_dist_single_stat(θ, data_obs) = sum(f_dist_multi_stats(θ, data_obs))
 nothing # hide
 ```
+
+It is often not clear, how to aggregating the distances of multiple
+statistics meaningfully. For example, here we had to combined distances
+measured in different units (number of individuals and time in days).
 
 The prior is defined with `Distributions.jl`:
 ```@example 1
@@ -175,38 +184,34 @@ prior = product_distribution([Uniform(0.1, 1),     # β
                               Uniform(0.05, 0.5)]) # γ
 ```
 
-With everything in place, we run the inference with the
-`:single_eps` and `:multi_eps` algorithm. Note, that the argument
+With everything in place, we run the inference for both distances. Note, that the argument
 `data_obs` is passed to the distance functions.
 ```@example 1
 res_1 = sabc(f_dist_single_stat, prior, data_obs;
-             n_simulation = 200_000,
-             n_particles = 5000,
-             algorithm = :single_eps)
+             n_simulation = 500_000,
+             n_particles = 5000)
 ```
 
 ```@example 1
 res_2 = sabc(f_dist_multi_stats, prior, data_obs;
-             n_simulation = 200_000,
-             n_particles = 5000,
-             algorithm = :multi_eps)
+             n_simulation = 500_000,
+             n_particles = 5000)
 ```
 
-Finally, we plot the posterior parameter distribution. If a larger
-number of iterations is used, the difference between the two algorithm
-would become smaller.
+Finally, we plot the posterior parameter distribution. The multiple
+statistics are a bit more informative resulting in a narrower posterior.
 ```@example 1
 pop_1 = stack(res_1.population)
 pop_2 = stack(res_2.population)
 
 p1 = scatter(pop_1[1,:], pop_1[2,:], title="single stat",
-             markeralpha = 0.2,
+             markeralpha = 0.3,
              markersize = 1,
              markerstrokewidth = 0);
 scatter!(p1, θtrue[1:1], θtrue[2:2], markersize = 2);
 
-p2 = scatter(pop_2[1,:], pop_2[2,:], title="multible stats",
-             markeralpha = 0.2,
+p2 = scatter(pop_2[1,:], pop_2[2,:], title="multiple stats",
+             markeralpha = 0.3,
              markersize = 1,
              markerstrokewidth = 0);
 scatter!(p2, θtrue[1:1], θtrue[2:2], markersize = 2);

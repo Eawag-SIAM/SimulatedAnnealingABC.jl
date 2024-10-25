@@ -25,7 +25,7 @@ expensive that conventional MCMC algorithms are no longer feasible.
 
 !!! note
 
-    Can you evaluate the density of your posterior? Can you write your
+    Can you evaluate the probability density of your posterior? Can you write your
     model in `Turing.jl`? Then you should
     most likely **not** be using this or any other ABC package!
     Conventional MCMC algorithms will be much more efficient.
