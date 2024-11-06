@@ -144,18 +144,57 @@ function estimate_jump_covariance(population, β)
 end
 
 """
-Proposal for n-dimensions, n > 1
+Random Walk proposal for n-dimensions, n > 1
 """
-proposal(θ, Σ::AbstractArray) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
+RW_proposal(θ, Σ::AbstractArray) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
 
 """
-Proposal for 1-dimension
+Random Walk proposal for 1-dimension
 """
-proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
+RW_proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 
 
 """
-# Initialisation step
+Differential Evolution proposal
+
+Default values corrspond to EMCEE.
+
+## References
+
+Ter Braak, C.J., 2006. A Markov Chain Monte Carlo version of the
+genetic algorithm Differential Evolution: easy Bayesian computing for
+real parameter spaces. Statistics and Computing 16, 239–249.
+
+Nelson, B., Ford, E.B., Payne, M.J., 2013. Run Dmc: An Efficient,
+Parallel Code For Analyzing Radial Velocity Observations Using N-Body
+Integrations And Differential Evolution Markov Chain Monte Carlo. ApJS
+210, 11. https://doi.org/10.1088/0067-0049/210/1/11
+"""
+function DE_proposal(θ, population; γ0=2.38*sqrt(length(θ)), σ_gamma=1e-5)
+    # sample index of two different partner particles
+    i1 = rand(1:length(population))
+    i2 = rand(1:length(population))
+
+    # propose move
+    γ = γ0 * (1 + σ_gamma * randn()) # based on Nelson et al, 2013
+    θ .+ γ .* (population[i1] .- population[i2])
+end
+
+
+"""
+Stretch Move proposal
+"""
+function SM_proposal(θ, population; a=2)
+    # sample index of a partner particle
+    i1 = rand(1:length(population))
+
+    # proposed move
+    z = (((a - 1.0) * rand() + 1)^2) / a
+    population[i1] .+ z .* (θ .- population[i1])
+end
+
+"""
+# Initialization step
 
 ## Arguments
 See docs for `sabc`
@@ -310,12 +349,24 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        n_accept_tmp = Threads.Atomic{Int}(0)
+        # split population in two halves
+        old_population_1 = population[1:(n_particles÷2)]
+        old_population_2 = population[(n_particles÷2 + 1):end]
 
+        n_accept_tmp = Threads.Atomic{Int}(0)
         Threads.@threads for i in eachindex(population)
 
             # proposal
-            θproposal = proposal(population[i], Σ_jump)
+
+            # θproposal = RW_proposal(population[i], Σ_jump)
+
+            if i <= n_particles÷2
+                # θproposal = DE_proposal(population[i], old_population_2)
+                θproposal = SM_proposal(population[i], old_population_2)
+            else
+                # θproposal = DE_proposal(population[i], old_population_1)
+                θproposal = SM_proposal(population[i], old_population_1)
+            end
 
             # acceptance probability
             if pdf(prior, θproposal) > 0
