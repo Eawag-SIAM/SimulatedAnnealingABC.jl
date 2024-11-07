@@ -12,10 +12,14 @@ abstract type Proposal end
 # -----------
 
 """
-Random Walk proposal
+```
+RandomWalk(; β=0.8, n_para)
+```
 
-- `β = 0.8`: Tuning parameter for mixing. Between zero and one.
-- `Σ`: covariance matrix
+Gaussian random walk proposal.
+
+The covariance is adaptivily learned. The mixing is controlled the tuning
+parameter `β` which must be between zero and one.
 """
 struct RandomWalk{T} <: Proposal
     β::Float64
@@ -31,16 +35,14 @@ function RandomWalk(; β=0.8, n_para)
     end
 end
 
-"""
-Random Walk proposal for n-dimensions, n > 1
-"""
+
+# Random Walk proposal for n-dimensions, n > 1
 function (rw::RandomWalk{T})(θ, population) where T <: AbstractArray
     θ .+ rand(MvNormal(zeros(size(rw.Σ,1)), rw.Σ))
 end
 
-"""
-Random Walk proposal for 1-dimension
-"""
+
+# Random Walk proposal for 1-dimension
 function (rw::RandomWalk{T})(θ, population) where T <: Real
     θ + rand(Normal(0, sqrt(rw.Σ)))
 end
@@ -57,9 +59,12 @@ end
 # -----------
 
 """
-Differential Evolution proposal
+```
+DifferentialEvolution(; γ0, σ_gamma = 1e-5)
+```
 
-Default values corrspond to EMCEE.
+Differential Evolution proposal, default values corresponding to EMCEE.
+Usually used with `γ0 = 2.38 * sqrt(2 * n_parameters)`
 
 ## References
 
@@ -99,7 +104,15 @@ update_proposal!(de::DifferentialEvolution, population) = nothing
 # -----------
 
 """
-Stretch Move proposal
+```
+StretchMove(;a=2)
+```
+The standard proposal used in EMCEE.
+
+## Reference
+
+Goodman, J., Weare, J., 2010. Ensemble samplers with affine invariance. Communications in Applied Mathematics and Computational Science 5, 65–80.
+
 """
 struct StretchMove <: Proposal
     a::Float64
