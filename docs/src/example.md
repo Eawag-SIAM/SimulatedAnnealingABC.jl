@@ -218,3 +218,62 @@ scatter!(p2, θtrue[1:1], θtrue[2:2], markersize = 2);
 
 plot(p1, p2, xlab = "β", ylab = "γ", legend=false)
 ```
+
+
+We can try different strategies to generate proposal jumps in the
+parameter space:
+
+```@example 1
+res_1 = sabc(f_dist_multi_stats, prior, data_obs;
+             n_simulation = 200_000,
+             n_particles = 10_000,
+             proposal = DifferentialEvolution(γ0=2.38/sqrt(2*2)),
+             show_progressbar=true)
+
+res_2 = sabc(f_dist_multi_stats, prior, data_obs;
+             n_simulation = 200_000,
+             n_particles = 10_000,
+             proposal = StretchMove(),
+             show_progressbar=true)
+
+res_3 = sabc(f_dist_multi_stats, prior, data_obs;
+             n_simulation = 200_000,
+             n_particles = 10_000,
+             proposal = RandomWalk(β=0.8, n_para=2),
+             show_progressbar=true)
+nothing
+```
+
+For this simple two-dimensional example the results are about the
+same:
+
+```@example 1
+pop_1 = stack(res_1.population)
+pop_2 = stack(res_2.population)
+pop_3 = stack(res_3.population)
+
+p1 = scatter(pop_1[1,:], pop_1[2,:], title="Differential Evolution",
+             markeralpha = 0.2,
+             markersize = 1,
+             markerstrokewidth = 0);
+scatter!(p1, θtrue[1:1], θtrue[2:2], markersize = 2);
+
+p2 = scatter(pop_2[1,:], pop_2[2,:], title="Stretch Move",
+             markeralpha = 0.2,
+             markersize = 1,
+             markerstrokewidth = 0);
+scatter!(p2, θtrue[1:1], θtrue[2:2], markersize = 2);
+
+p3 = scatter(pop_3[1,:], pop_3[2,:], title="Gaussian random walk",
+             markeralpha = 0.2,
+             markersize = 1,
+             markerstrokewidth = 0);
+scatter!(p3, θtrue[1:1], θtrue[2:2], markersize = 2);
+
+plot(
+    p1, p2, p3,
+    xlab = "β", ylab = "γ", legend=false,
+
+)
+
+```
