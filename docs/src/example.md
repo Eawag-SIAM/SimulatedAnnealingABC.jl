@@ -225,26 +225,23 @@ parameter space:
 
 ```@example 1
 res_1 = sabc(f_dist_multi_stats, prior, data_obs;
-             n_simulation = 200_000,
-             n_particles = 10_000,
-             proposal = DifferentialEvolution(n_para = 2),
-             show_progressbar=true)
+             n_simulation = 500_000,
+             n_particles = 5_000,
+             proposal = DifferentialEvolution(n_para = 2))
 
 res_2 = sabc(f_dist_multi_stats, prior, data_obs;
-             n_simulation = 200_000,
-             n_particles = 10_000,
-             proposal = StretchMove(),
-             show_progressbar=true)
+             n_simulation = 500_000,
+             n_particles = 5_000,
+             proposal = StretchMove())
 
 res_3 = sabc(f_dist_multi_stats, prior, data_obs;
-             n_simulation = 200_000,
-             n_particles = 10_000,
-             proposal = RandomWalk(n_para = 2),
-             show_progressbar=true)
+             n_simulation = 500_000,
+             n_particles = 5_000,
+             proposal = RandomWalk(n_para = 2))
 nothing
 ```
 
-For this simple two-dimensional example the results are about the
+For this simple two-dimensional posterior the results are about the
 same:
 
 ```@example 1
