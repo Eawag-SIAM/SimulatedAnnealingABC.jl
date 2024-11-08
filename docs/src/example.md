@@ -227,7 +227,7 @@ parameter space:
 res_1 = sabc(f_dist_multi_stats, prior, data_obs;
              n_simulation = 200_000,
              n_particles = 10_000,
-             proposal = DifferentialEvolution(γ0=2.38/sqrt(2*2)),
+             proposal = DifferentialEvolution(n_para = 2),
              show_progressbar=true)
 
 res_2 = sabc(f_dist_multi_stats, prior, data_obs;
@@ -239,7 +239,7 @@ res_2 = sabc(f_dist_multi_stats, prior, data_obs;
 res_3 = sabc(f_dist_multi_stats, prior, data_obs;
              n_simulation = 200_000,
              n_particles = 10_000,
-             proposal = RandomWalk(β=0.8, n_para=2),
+             proposal = RandomWalk(n_para = 2),
              show_progressbar=true)
 nothing
 ```
@@ -270,10 +270,5 @@ p3 = scatter(pop_3[1,:], pop_3[2,:], title="Gaussian random walk",
              markerstrokewidth = 0);
 scatter!(p3, θtrue[1:1], θtrue[2:2], markersize = 2);
 
-plot(
-    p1, p2, p3,
-    xlab = "β", ylab = "γ", legend=false,
-
-)
-
+plot(p1, p2, p3, xlab = "β", ylab = "γ", legend=false)
 ```

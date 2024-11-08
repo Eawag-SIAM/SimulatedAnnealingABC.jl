@@ -233,7 +233,7 @@ update_population!(population_state::SABCresult,
                    f_dist, prior, args...;
                    n_simulation,
                    v=1.0, δ=0.1,
-                   proposal::Proposal = DifferentialEvolution(γ0 = 2.38/sqrt(2*n_para)),
+                   proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
                    resample = 2*length(population_state.population),
                    checkpoint_history = 1,
                    show_progressbar::Bool = !is_logging(stderr),
@@ -251,7 +251,7 @@ See docstring for `sabc`.
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
                             v=1.0, δ=0.1,
-                            proposal::Proposal = DifferentialEvolution(γ0=2.38/sqrt(2*length(prior))),
+                            proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
                             resample = 2*length(population_state.population),
                             checkpoint_history = 1,
                             show_progressbar::Bool = !is_logging(stderr),
@@ -432,7 +432,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `n_particles`: Desired number of particles.
 - `n_simulation`: maximal number of simulations from `f_dist`.
 - `algorithm = :single_eps`: Choose algorithm, either `:multi_eps`, or `:single_eps`. With `:single_eps` a global tolerance is used for all distances. Wit `:multi_eps` every distnace has it's own tolerance.
-- `propsal =  DifferentialEvolution(γ0=2.38/sqrt(2*n_para))`: Propsal distribution. Currently `RandomWalk`, `DifferentialEvolution`, and `StretchMove` are implemented.
+- `propsal =  DifferentialEvolution(n_para = length(prior))`: Method to generate propsals. Currently `RandomWalk`, `DifferentialEvolution`, and `StretchMove` are implemented.
 - `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
 - `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
 - `resample`: After how many accepted population updates?
@@ -448,7 +448,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               algorithm = :single_eps,
-              proposal::Proposal = DifferentialEvolution(γ0=2.38/sqrt(2*length(prior))),
+              proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
               resample = 2*n_particles,
               v=1.0, δ=0.1,
               checkpoint_history = 1,
