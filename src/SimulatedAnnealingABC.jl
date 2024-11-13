@@ -296,38 +296,40 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
-        # split population in two halves
-        old_population_1 = population[1:(n_particles÷2)]
-        old_population_2 = population[(n_particles÷2 + 1):end]
+        # split population indices in two halves
+        batch_1 = 1:(n_particles÷2)
+        batch_2 = (n_particles÷2 + 1):n_particles
 
         n_accept_tmp = Threads.Atomic{Int}(0)
-        Threads.@threads for i in eachindex(population)
+        for (active, inactive) in [(batch_1, batch_2), (batch_2, batch_1)]
 
-            # generate proposal
-            if i <= n_particles÷2
-                θproposal = proposal(population[i], old_population_2)
-            else
-                θproposal = proposal(population[i], old_population_1)
+            population_inactive = @view population[inactive]
+
+            Threads.@threads for i in active
+
+                # generate proposal
+                θproposal = proposal(population[i],  population_inactive)
+
+
+                # acceptance probability
+                if pdf(prior, θproposal) > 0
+                    ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                    u_proposal = cdfs_dist_prior(ρ_proposal)
+
+                    accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
+                        exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+                else
+                    accept_prob = 0.0
+                end
+
+                if rand() < accept_prob
+                    population[i] = θproposal
+                    u[i,:] .= u_proposal
+                    ρ[i,:] .= ρ_proposal
+                    Threads.atomic_add!(n_accept_tmp, 1)
+                end
+
             end
-
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                u_proposal = cdfs_dist_prior(ρ_proposal)
-
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-            else
-                accept_prob = 0.0
-            end
-
-            if rand() < accept_prob
-                population[i] = θproposal
-                u[i,:] .= u_proposal
-                ρ[i,:] .= ρ_proposal
-                Threads.atomic_add!(n_accept_tmp, 1)
-            end
-
         end
 
         n_accept += n_accept_tmp[]
