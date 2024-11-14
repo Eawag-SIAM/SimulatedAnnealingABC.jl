@@ -310,7 +310,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                 # generate proposal
                 θproposal = proposal(population[i],  population_inactive)
 
-
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
                     ρ_proposal = f_dist(θproposal, args...; kwargs...)
@@ -334,8 +333,17 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
         n_accept += n_accept_tmp[]
 
+
+        # --------------------------------
+        # Resampling
+
+        if n_accept >= (n_resampling + 1) * resample
+            population, u, ess = resample_population(population, u, δ)
+            n_resampling += 1
+        end
+
         # ----------------------------------------------------------
-        # Update epsilon and jump distribution
+        # Update epsilon and proposal distribution
 
         update_proposal!(proposal, population)
 
@@ -343,24 +351,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             ϵ = update_epsilon_multi_eps(u, v)
         elseif algorithm == :single_eps
             ϵ = update_epsilon_single_eps(mean(u), v)
-        end
-
-        # --------------------------------
-        # Resampling
-
-        if n_accept >= (n_resampling + 1) * resample
-
-            population, u, ess = resample_population(population, u, δ)
-            update_proposal!(proposal, population)
-
-            # update epsilon
-            if algorithm == :multi_eps
-                ϵ = update_epsilon_multi_eps(u, v)
-            elseif algorithm == :single_eps
-                ϵ = update_epsilon_single_eps(mean(u), v)
-            end
-
-            n_resampling += 1
         end
 
         # -------------------------------------------------

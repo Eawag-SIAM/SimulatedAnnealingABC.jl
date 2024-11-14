@@ -129,12 +129,12 @@ StretchMove(;a=2) = StretchMove(a)
 function (sm::StretchMove)(θ, population)
     # sample index of a partner particle
     # Note, because we split the population batches,
-    # it is ensured to be a different from  θ
-    i1 = rand(1:length(population))
+    # it is ensured to be different from θ.
+    i = rand(1:length(population))
 
     # proposed move
     z = ((sm.a - 1.0) * rand() + 1)^2 / sm.a
-    population[i1] .+ z .* (θ .- population[i1])
+    population[i] .+ z .* (θ .- population[i])
 end
 
 update_proposal!(sm::StretchMove, population) = nothing
