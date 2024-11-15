@@ -441,13 +441,24 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
 - `β = 0.8`: Tuning parameter for mixing. Between zero and one.
 - `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
-- `algorithm = :single_eps`: Algorithm for tolerance, either `:multi_eps`, or `:single_eps`. With `:single_eps` a global tolerance is used for all distances. With `:multi_eps` every distance has it's own tolerance. Note, `:multi_eps` must not be used if `f_fist` returns only a single statistic!
+- `algorithm = :single_eps`: Algorithm for tolerance, either `:multi_eps`, or `:single_eps`. See below for details.
 - `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
                                 By default disabled for for interactive use.
 - `kwargs...`: Further keyword arguments passed to `f_dist``
+
+## Details
+
+Depending on how many statistics `f_dist` returns, different algorithms are compatible:
+
+|               | 1 statistic      | >1 statistics |
+|---------------|------------------|---------------|
+| `:single_eps` | ✓                | ✓             |
+| `:multi_eps`  | ✖                | ✓             |
+
+Note, there is no check if the chosen algorithm is compatible with `f_dist`!
 
 ## Return
 - An object of type `SABCresult`
