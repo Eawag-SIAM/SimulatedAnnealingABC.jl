@@ -7,7 +7,7 @@ import Base.show
 using UnPack: @unpack
 using StatsBase: mean, cov, sample, weights
 
-using Distributions: Distribution, pdf, MvNormal, Normal
+using Distributions: Distribution, logpdf, MvNormal, Normal
 import Roots
 
 import Dates
@@ -308,20 +308,20 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             Threads.@threads for i in active
 
                 # generate proposal
-                θproposal, factor = proposal(population[i],  population_inactive)
+                θproposal, log_factor = proposal(population[i],  population_inactive)
 
                 # acceptance probability
-                if pdf(prior, θproposal) > 0
+                if logpdf(prior, θproposal) > -Inf
                     ρ_proposal = f_dist(θproposal, args...; kwargs...)
                     u_proposal = cdfs_dist_prior(ρ_proposal)
 
-                    accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                        exp(sum((u[i,:] .- u_proposal) ./ ϵ)) * factor
+                    log_accept_prob = logpdf(prior, θproposal) - logpdf(prior, population[i]) +
+                        (sum((u[i,:] .- u_proposal) ./ ϵ)) + log_factor
                 else
-                    accept_prob = 0.0
+                    log_accept_prob = -Inf
                 end
 
-                if rand() < accept_prob
+                if log(rand()) < log_accept_prob
                     population[i] = θproposal
                     u[i,:] .= u_proposal
                     ρ[i,:] .= ρ_proposal

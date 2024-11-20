@@ -38,7 +38,8 @@ end
 
 # Random Walk proposal for n-dimensions, n > 1
 function (rw::RandomWalk{T})(θ, population) where T <: AbstractArray
-    θ .+ rand(MvNormal(zeros(size(rw.Σ,1)), rw.Σ)), 1
+    log_factor = 0
+    θ .+ rand(MvNormal(zeros(size(rw.Σ,1)), rw.Σ)), log_factor
 end
 
 ## update covariance of the jump distributions
@@ -49,7 +50,8 @@ end
 
 # Random Walk proposal for 1-dimension
 function (rw::RandomWalk{T})(θ, population) where T <: Real
-    θ + rand(Normal(0, sqrt(rw.Σ))), 1
+    log_factor = 0
+    θ + rand(Normal(0, sqrt(rw.Σ))), log_factor
 end
 
 ## update covariance of the jump distributions
@@ -103,8 +105,8 @@ function (de::DifferentialEvolution)(θ, population)
     # propose move
     γ = de.γ0 * (1 + de.σ_gamma * randn()) # based on Nelson et al, 2013
 
-    factor = 1
-    θ .+ γ .* (population[i1] .- population[i2]), factor
+    log_factor = 0
+    θ .+ γ .* (population[i1] .- population[i2]), log_factor
 end
 
 update_proposal!(de::DifferentialEvolution, population) = nothing
@@ -137,8 +139,8 @@ function (sm::StretchMove)(θ, population)
     # proposed move
     z = ((sm.a - 1.0) * rand() + 1)^2 / sm.a
 
-    factor = z^(length(θ) - 1)
-    population[i] .+ z .* (θ .- population[i]), factor
+    log_factor = log(z) * (length(θ) - 1)
+    population[i] .+ z .* (θ .- population[i]), log_factor
 end
 
 update_proposal!(sm::StretchMove, population) = nothing
