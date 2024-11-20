@@ -308,7 +308,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
             Threads.@threads for i in active
 
                 # generate proposal
-                θproposal = proposal(population[i],  population_inactive)
+                θproposal, factor = proposal(population[i],  population_inactive)
 
                 # acceptance probability
                 if pdf(prior, θproposal) > 0
@@ -316,7 +316,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                     u_proposal = cdfs_dist_prior(ρ_proposal)
 
                     accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                        exp(sum((u[i,:] .- u_proposal) ./ ϵ))
+                        exp(sum((u[i,:] .- u_proposal) ./ ϵ)) * factor
                 else
                     accept_prob = 0.0
                 end
