@@ -18,7 +18,7 @@ RandomWalk(; β=0.8, n_parameters)
 
 Gaussian random walk proposal.
 
-The covariance is adaptivily learned. The mixing is controlled the tuning
+The covariance is adaptivily learned. The mixing is controlled by the tuning
 parameter `β` which must be between zero and one.
 """
 mutable struct RandomWalk{T} <: Proposal
@@ -69,7 +69,7 @@ DifferentialEvolution(; n_para, σ_gamma = 1e-5)
 ```
 
 Differential Evolution proposal, default values corresponding to EMCEE.
-If the number of parameters is provided, `γ0` is set to `2.38 / sqrt(2 * n_parameters)`.
+If the number of parameters `n_para` is provided, `γ0` is set to `2.38 / sqrt(2 * n_parameters)`.
 
 ## References
 

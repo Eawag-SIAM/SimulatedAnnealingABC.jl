@@ -418,21 +418,32 @@ sabc(f_dist::Function, prior::Distribution, args...;
 # Simulated Annealing Approximate Bayesian Inference Algorithm
 
 ## Arguments
-- `f_dist`: Function that returns one or more distances between data and a random sample from the likelihood. The first argument must be the parameter vector.
+- `f_dist`: Function that returns one or more distances between the observation and a random sample from the likelihood. The first argument must be the parameter vector.
 - `prior`: A `Distribution` defining the prior.
-- `args...`: Further arguments passed to `f_dist`
+- `args...`: Further positional arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
-- `n_simulation`: maximal number of simulations from `f_dist`.
-- `algorithm = :single_eps`: Choose algorithm, either `:multi_eps`, or `:single_eps`. With `:single_eps` a global tolerance is used for all distances. Wit `:multi_eps` every distnace has it's own tolerance.
+- `n_simulation`: Maximal number of simulations from `f_dist`.
 - `propsal =  DifferentialEvolution(n_para = length(prior))`: Method to generate propsals. Currently `RandomWalk`, `DifferentialEvolution`, and `StretchMove` are implemented.
+- `algorithm = :single_eps`: Algorithm for tolerance, either `:multi_eps`, or `:single_eps`. See below for details.
+- `resample`: After how many accepted population updates?
 - `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
 - `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
-- `resample`: After how many accepted population updates?
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
                                 By default disabled for for interactive use.
-- `kwargs...`: Further arguments passed to `f_dist``
+- `kwargs...`: Further keyword arguments passed to `f_dist``
+
+## Details
+
+Depending on how many statistics `f_dist` returns, different algorithms are compatible:
+
+|               | 1 statistic      | >1 statistics |
+|---------------|------------------|---------------|
+| `:single_eps` | ✓                | ✓             |
+| `:multi_eps`  | ✖                | ✓             |
+
+Note, there is no check if the chosen algorithm is compatible with `f_dist`!
 
 ## Return
 - An object of type `SABCresult`
