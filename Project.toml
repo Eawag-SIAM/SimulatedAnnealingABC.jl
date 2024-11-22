@@ -1,7 +1,7 @@
 name = "SimulatedAnnealingABC"
 uuid = "2e0e63f1-f03b-4682-b156-8f8e3c0454d9"
 authors = ["Andreas Scheidegger", "Simone Ulzega"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
