@@ -13,7 +13,7 @@ abstract type Proposal end
 
 """
 ```
-RandomWalk(; β=0.8, n_parameters)
+RandomWalk(; β=0.8, n_para)
 ```
 
 Gaussian random walk proposal.
