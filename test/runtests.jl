@@ -196,3 +196,65 @@ end
         end
     end
 end
+
+@testset "proposals generation" verbose = true begin
+
+    @testset "1-dim" begin
+        ## Define model
+        f_dist(θ) = abs(0.0 - mean(rand(Normal(θ[1], 1), 100)))
+        prior = Uniform(-10,10)
+
+        # different proposal generators
+        proposals = [DifferentialEvolution(n_para=1),
+                     StretchMove(),
+                     RandomWalk(n_para=1)]
+
+        for p in proposals
+            res = sabc(f_dist, prior;
+                       proposal = p,
+                       n_particles = 100,
+                       n_simulation = 1000)
+
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
+
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               proposal = p,
+                               n_simulation = 1_000)
+
+            @test res.state.n_simulation <= 2000
+        end
+    end
+
+
+    @testset "n-dim" begin
+
+        ## Define model
+        f_dist(θ) = abs(0.0 - mean(rand(Normal(θ[1], θ[2]), 100)))
+        prior = product_distribution([Normal(0,1),   # theta[1]
+                                      Uniform(0,1)]) # theta[2]
+        # different proposal generators
+        proposals = [DifferentialEvolution(n_para=2),
+                     StretchMove(),
+                     RandomWalk(n_para=2)]
+
+        for p in proposals
+            res = sabc(f_dist, prior;
+                       proposal = p,
+                       n_particles = 100,
+                       n_simulation = 1000)
+
+            @test res.state.n_simulation <= 1000
+            @test length(res.population) == 100
+
+            ## update existing population
+            update_population!(res, f_dist, prior;
+                               proposal = p,
+                               n_simulation = 1_000)
+
+            @test res.state.n_simulation <= 2000
+        end
+    end
+
+end

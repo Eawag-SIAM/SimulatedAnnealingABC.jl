@@ -7,15 +7,17 @@ import Base.show
 using UnPack: @unpack
 using StatsBase: mean, cov, sample, weights
 
-using Distributions: Distribution, pdf, MvNormal, Normal
+using Distributions: Distribution, logpdf, MvNormal, Normal
 import Roots
 
 import Dates
 using ProgressMeter
 
 include("cdf_estimators.jl")
+include("proposals.jl")
 
 export sabc, update_population!
+
 
 # -------------------------------------------
 # Define types to hold results
@@ -33,7 +35,6 @@ mutable struct SABCstate
     u_history::Vector{Vector{Float64}}
 
     cdfs_dist_prior             # function G in Albert et al., Statistics and Computing 25, 2015
-    Σ_jump::Union{Matrix{Float64}, Float64}  # Float64 for 1d
     n_simulation::Int           # number of simulations
     n_accept::Int               # number of accepted updates
     n_resampling::Int           # number of population resamplings
@@ -136,26 +137,10 @@ function resample_population(population, u, δ)
 end
 
 
-"""
-Estimate the covariance for the jump distributions from a population
-"""
-function estimate_jump_covariance(population, β)
-    β * (cov(stack(population, dims=1)) + 1e-8*I)
-end
-
-"""
-Proposal for n-dimensions, n > 1
-"""
-proposal(θ, Σ::AbstractArray) = θ .+ rand(MvNormal(zeros(size(Σ,1)), Σ))
-
-"""
-Proposal for 1-dimension
-"""
-proposal(θ, Σ::Float64) = θ + rand(Normal(0, sqrt(Σ)))
 
 
 """
-# Initialisation step
+# Initialization step
 
 ## Arguments
 See docs for `sabc`
@@ -165,7 +150,7 @@ See docs for `sabc`
 """
 function initialization(f_dist, prior::Distribution, args...;
                         n_particles, n_simulation,
-                        v = 1.0, β = 0.8, δ= 0.1, algorithm = :single_eps, kwargs...)
+                        v = 1.0, δ= 0.1, algorithm = :single_eps, kwargs...)
 
     n_simulation < n_particles &&
         error("`n_simulation = $n_simulation` is too small for $n_particles particles.")
@@ -222,10 +207,6 @@ function initialization(f_dist, prior::Distribution, args...;
     u_history = [[mean(ic) for ic in eachcol(u)]]
     ϵ_history = [copy(ϵ)]
 
-    # ------------------
-    # estimate jump covariance
-    Σ_jump = estimate_jump_covariance(population, β)
-
     # ---------------------
     # Collect parameters and state of the algorithm
 
@@ -238,7 +219,6 @@ function initialization(f_dist, prior::Distribution, args...;
                       ρ_history,
                       u_history,
                       cdfs_dist_prior,
-                      Σ_jump,
                       n_simulation,
                       0, 1, 0)  # n_accept = 0, n_resampling = 1, n_population_updates = 0
 
@@ -252,8 +232,9 @@ end
 update_population!(population_state::SABCresult,
                    f_dist, prior, args...;
                    n_simulation,
-                   v=1.0, β=0.8, δ=0.1,
-                   resample = 2*n_particles,
+                   v=1.0, δ=0.1,
+                   proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
+                   resample = 2*length(population_state.population),
                    checkpoint_history = 1,
                    show_progressbar::Bool = !is_logging(stderr),
                    show_checkpoint = is_logging(stderr) ? 100 : Inf,
@@ -269,7 +250,8 @@ See docstring for `sabc`.
 """
 function update_population!(population_state::SABCresult, f_dist, prior, args...;
                             n_simulation,
-                            v=1.0, β=0.8, δ=0.1,
+                            v=1.0, δ=0.1,
+                            proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
                             resample = 2*length(population_state.population),
                             checkpoint_history = 1,
                             show_progressbar::Bool = !is_logging(stderr),
@@ -277,7 +259,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
                             kwargs...)
 
     v <= 0 && error("Annealing speed `v` must be positive.")
-    (0 < β <= 1) || error("Mixing parameter `β` must be between zero and one.")
     δ <= 0 && error("Resamping intensity `δ` must be positive.")
 
     state = population_state.state
@@ -287,7 +268,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     n_stats = size(u,2)
 
     @unpack ϵ, algorithm, ϵ_history, ρ_history,
-    u_history, n_accept, n_resampling, Σ_jump, cdfs_dist_prior = state
+    u_history, n_accept, n_resampling, cdfs_dist_prior = state
 
     n_particles = length(population)
 
@@ -297,6 +278,11 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
 
     # to estimate ETA
     t_start = Dates.now()
+
+    # ------------------
+    # estimate jump covariance
+    update_proposal!(proposal, population)
+
 
     # ----------------------------------------------------
     #  Update all particles
@@ -310,62 +296,61 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # ----------------------------------------------------------
         # update particles
 
+        # split population indices in two halves
+        batch_1 = 1:(n_particles÷2)
+        batch_2 = (n_particles÷2 + 1):n_particles
+
         n_accept_tmp = Threads.Atomic{Int}(0)
+        for (active, inactive) in [(batch_1, batch_2), (batch_2, batch_1)]
 
-        Threads.@threads for i in eachindex(population)
+            population_inactive = @view population[inactive]
 
-            # proposal
-            θproposal = proposal(population[i], Σ_jump)
+            Threads.@threads for i in active
 
-            # acceptance probability
-            if pdf(prior, θproposal) > 0
-                ρ_proposal = f_dist(θproposal, args...; kwargs...)
-                u_proposal = cdfs_dist_prior(ρ_proposal)
+                # generate proposal
+                θproposal, log_factor = proposal(population[i],  population_inactive)
 
-                accept_prob = pdf(prior, θproposal) / pdf(prior, population[i]) *
-                    exp(sum((u[i,:] .- u_proposal) ./ ϵ))
-            else
-                accept_prob = 0.0
+                # acceptance probability
+                if logpdf(prior, θproposal) > -Inf
+                    ρ_proposal = f_dist(θproposal, args...; kwargs...)
+                    u_proposal = cdfs_dist_prior(ρ_proposal)
+
+                    log_accept_prob = logpdf(prior, θproposal) - logpdf(prior, population[i]) +
+                        (sum((u[i,:] .- u_proposal) ./ ϵ)) + log_factor
+                else
+                    log_accept_prob = -Inf
+                end
+
+                if log(rand()) < log_accept_prob
+                    population[i] = θproposal
+                    u[i,:] .= u_proposal
+                    ρ[i,:] .= ρ_proposal
+                    Threads.atomic_add!(n_accept_tmp, 1)
+                end
+
             end
-
-            if rand() < accept_prob
-                population[i] = θproposal
-                u[i,:] .= u_proposal
-                ρ[i,:] .= ρ_proposal
-                Threads.atomic_add!(n_accept_tmp, 1)
-            end
-
         end
 
         n_accept += n_accept_tmp[]
 
-        # ----------------------------------------------------------
-        # Update epsilon and jump distribution
-
-        Σ_jump = estimate_jump_covariance(population, β)
-
-        if algorithm == :multi_eps
-            ϵ = update_epsilon_multi_eps(u, v)
-        elseif algorithm == :single_eps
-            ϵ = update_epsilon_single_eps(mean(u), v)
-        end
 
         # --------------------------------
         # Resampling
 
         if n_accept >= (n_resampling + 1) * resample
-
             population, u, ess = resample_population(population, u, δ)
-            Σ_jump = estimate_jump_covariance(population, β)
-
-            # update epsilon
-            if algorithm == :multi_eps
-                ϵ = update_epsilon_multi_eps(u, v)
-            elseif algorithm == :single_eps
-                ϵ = update_epsilon_single_eps(mean(u), v)
-            end
-
             n_resampling += 1
+        end
+
+        # ----------------------------------------------------------
+        # Update epsilon and proposal distribution
+
+        update_proposal!(proposal, population)
+
+        if algorithm == :multi_eps
+            ϵ = update_epsilon_multi_eps(u, v)
+        elseif algorithm == :single_eps
+            ϵ = update_epsilon_single_eps(mean(u), v)
         end
 
         # -------------------------------------------------
@@ -403,7 +388,6 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
     state.ϵ_history = ϵ_history
     state.u_history = u_history
     state.ρ_history = ρ_history
-    state.Σ_jump = Σ_jump
     state.n_simulation += n_updates
     state.n_accept = n_accept
     state.n_resampling = n_resampling
@@ -423,8 +407,9 @@ end
 sabc(f_dist::Function, prior::Distribution, args...;
       n_particles = 100, n_simulation = 10_000,
       algorithm = :single_eps,
+      propsal =  DifferentialEvolution(γ0=2.38/sqrt(2*n_para)).
       resample = 2*n_particles,
-      v=1.0, β=0.8, δ=0.1,
+      v=1.0, δ=0.1,
       checkpoint_history = 1,
       show_progressbar::Bool = !is_logging(stderr),
       show_checkpoint = is_logging(stderr) ? 100 : Inf,
@@ -438,11 +423,11 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `args...`: Further positional arguments passed to `f_dist`
 - `n_particles`: Desired number of particles.
 - `n_simulation`: Maximal number of simulations from `f_dist`.
-- `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
-- `β = 0.8`: Tuning parameter for mixing. Between zero and one.
-- `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
+- `propsal =  DifferentialEvolution(n_para = length(prior))`: Method to generate propsals. Currently `RandomWalk`, `DifferentialEvolution`, and `StretchMove` are implemented.
 - `algorithm = :single_eps`: Algorithm for tolerance, either `:multi_eps`, or `:single_eps`. See below for details.
 - `resample`: After how many accepted population updates?
+- `v = 1.0`: Tuning parameter for annealing speed. Must be positive.
+- `δ = 0.1`: Tuning parameter for resampling intensity. Must be positive and should be small.
 - `checkpoint_history = 1`: every how many population updates distances and epsilons are stored
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
@@ -466,8 +451,9 @@ Note, there is no check if the chosen algorithm is compatible with `f_dist`!
 function sabc(f_dist::Function, prior::Distribution, args...;
               n_particles = 100, n_simulation = 10_000,
               algorithm = :single_eps,
+              proposal::Proposal = DifferentialEvolution(n_para = length(prior)),
               resample = 2*n_particles,
-              v=1.0, β=0.8, δ=0.1,
+              v=1.0, δ=0.1,
               checkpoint_history = 1,
               show_progressbar::Bool = !is_logging(stderr),
               show_checkpoint = is_logging(stderr) ? 100 : Inf,
@@ -484,7 +470,7 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     population_state = initialization(f_dist, prior, args...;
                                       n_particles = n_particles,
                                       n_simulation = n_simulation,
-                                      v=v, β=β, δ=δ, algorithm = algorithm, kwargs...)
+                                      v=v,  δ=δ, algorithm = algorithm, kwargs...)
 
     # ------------------------------
     # Sampling
@@ -495,7 +481,8 @@ function sabc(f_dist::Function, prior::Distribution, args...;
     update_population!(population_state, f_dist, prior, args...;
                        n_simulation = n_sim_remaining,
                        resample = resample,
-                       v=v, β=β, δ=δ,
+                       proposal = proposal,
+                       v=v, δ=δ,
                        checkpoint_history = checkpoint_history,
                        show_progressbar = show_progressbar,
                        show_checkpoint = show_checkpoint,
