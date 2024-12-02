@@ -64,8 +64,8 @@ end
 
 """
 ```
-DifferentialEvolution(γ0, σ_gamma = 1e-5)
 DifferentialEvolution(; n_para, σ_gamma = 1e-5)
+DifferentialEvolution(; γ0, σ_gamma = 1e-5)
 ```
 
 Differential Evolution proposal, default values corresponding to EMCEE.
@@ -85,13 +85,17 @@ Integrations And Differential Evolution Markov Chain Monte Carlo. ApJS
 struct DifferentialEvolution <: Proposal
     γ0::Float64
     σ_gamma::Float64
-end
 
-DifferentialEvolution(λ0) = DifferentialEvolution(λ0, 1e-5)
-
-function DifferentialEvolution(; n_para, σ_gamma = 1e-5)
-    γ0 = 2.38/sqrt(2*n_para)
-    DifferentialEvolution(γ0, σ_gamma)
+    function DifferentialEvolution(; γ0 = nothing, n_para = nothing, σ_gamma = 1e-5)
+        if !isnothing(γ0) && isnothing(n_para)
+            new(γ0, σ_gamma)
+        elseif !isnothing(n_para) && isnothing(γ0)
+            γ0 = 2.38/sqrt(2*n_para)
+            new(γ0, σ_gamma)
+        else
+            throw(ArgumentError("Provide either `γ0` or `n_para`, not both."))
+        end
+    end
 end
 
 function (de::DifferentialEvolution)(θ, population)

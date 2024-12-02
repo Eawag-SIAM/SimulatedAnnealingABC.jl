@@ -199,6 +199,15 @@ end
 
 @testset "proposals generation" verbose = true begin
 
+    @testset "constructors" begin
+        # disallow positional arguments
+        @test_throws MethodError DifferentialEvolution(1, 0.1)
+        @test_throws MethodError DifferentialEvolution(1)
+        # you can only pass `γ0` or `n_para`, not both
+        @test_throws ArgumentError DifferentialEvolution(γ0=1, n_para=5)
+        @test_throws ArgumentError DifferentialEvolution(γ0=1, n_para=5, σ_gamma=1.4)
+    end
+
     @testset "1-dim" begin
         ## Define model
         f_dist(θ) = abs(0.0 - mean(rand(Normal(θ[1], 1), 100)))
