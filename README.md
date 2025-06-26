@@ -26,6 +26,6 @@ documentation and examples.
 
 ## References
 
-Albert, C., Ulgeza, S., Dirmeier, S., Scheidegger, A., Bassi, A., Mira, A., (in preparation). Simulated Annealing ABC with several summary statistic.
+Albert, C., Ulzega, S., Dirmeier, S., Scheidegger, A., Bassi, A., Mira, A., (in preparation). Simulated Annealing ABC with several summary statistic.
 
 Albert, C., Künsch, H. R., & Scheidegger, A. (2015). A simulated annealing approach to approximate Bayes computations. Statistics and Computing, 25(6), 1217–1232.
