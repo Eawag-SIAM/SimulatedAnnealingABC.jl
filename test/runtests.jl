@@ -53,7 +53,12 @@ end
                                          n_particles = 100, n_simulation = 10,
                                          δ = -0.1)
 
-        for algorithm in [:multi_eps, :single_eps]
+        # `:multi_eps` needs more than one statistic
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 1000,
+                                         algorithm = :multi_eps)
+
+        for algorithm in [:single_eps]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,
@@ -92,7 +97,12 @@ end
                                          n_particles = 100,
                                          n_simulation = 10)
 
-        for algorithm in [:multi_eps, :single_eps]
+        # `:multi_eps` needs more than one statistic
+        @test_throws ErrorException sabc(f_dist, prior;
+                                         n_particles = 100, n_simulation = 1000,
+                                         algorithm = :multi_eps)
+
+        for algorithm in [:single_eps]
 
             res = sabc(f_dist, prior;
                        n_particles = 100, n_simulation = 1000,

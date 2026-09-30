@@ -164,6 +164,8 @@ function initialization(f_dist, prior::Distribution, args...;
     θ = rand(prior)  # take a random sample
     ρinit = f_dist(θ, args...; kwargs...)  # generate dummy distances to initialize containers
     n_stats = length(ρinit)
+    algorithm == :multi_eps && n_stats == 1 &&
+        error("Algorithm `:multi_eps` requires more than one statistic. Use `:single_eps` instead.")
     distances_prior = Array{eltype(ρinit)}(undef, n_particles, n_stats)
     population = Vector{typeof(θ)}(undef, n_particles)
 
@@ -444,7 +446,7 @@ Depending on how many statistics `f_dist` returns, different algorithms are comp
 | `:single_eps` | ✓                | ✓             |
 | `:multi_eps`  | ✖                | ✓             |
 
-Note, there is no check if the chosen algorithm is compatible with `f_dist`!
+Using `:multi_eps` with a single statistic throws an error.
 
 ## Return
 - An object of type `SABCresult`
