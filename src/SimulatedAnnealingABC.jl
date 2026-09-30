@@ -121,19 +121,20 @@ end
 """
 Resample population
 """
-function resample_population(population, u, δ)
+function resample_population(population, u, ρ, δ)
     n = length(population)
     ū = mean(u, dims=1)
     w = exp.(-sum(u[:,i] .* δ ./ ū[i] for i in 1:size(u, 2)))
     # Choose indexes based on weights w
     idx_resampled = sample(1:n, weights(w), n, replace=true)
-    # Apply selected indexes to population and u's
+    # Apply selected indexes to population, u's, and ρ's
     population = population[idx_resampled]
     u = u[idx_resampled,:]
+    ρ = ρ[idx_resampled,:]
     # Effective sample size:
     ess = (sum(w))^2/sum(abs2, w)
     # Return:
-    population, u, ess
+    population, u, ρ, ess
 end
 
 
@@ -193,8 +194,8 @@ function initialization(f_dist, prior::Distribution, args...;
 
 
     # ------------------
-    # resampling before setting intial epsilon
-    population, u, ess = resample_population(population, u, δ)
+    # resampling before setting initial epsilon
+    population, u, distances_prior, ess = resample_population(population, u, distances_prior, δ)
 
     # initialize epsilon
     if algorithm == :multi_eps
@@ -338,7 +339,7 @@ function update_population!(population_state::SABCresult, f_dist, prior, args...
         # Resampling
 
         if n_accept >= (n_resampling + 1) * resample
-            population, u, ess = resample_population(population, u, δ)
+            population, u, ρ, ess = resample_population(population, u, ρ, δ)
             n_resampling += 1
         end
 
@@ -432,7 +433,7 @@ sabc(f_dist::Function, prior::Distribution, args...;
 - `show_progressbar::Bool = !is_logging(stderr)`: defaults to `true` for interactive use.
 - `show_checkpoint::Int = 100`: every how many population updates algorithm state is displayed.
                                 By default disabled for for interactive use.
-- `kwargs...`: Further keyword arguments passed to `f_dist``
+- `kwargs...`: Further keyword arguments passed to `f_dist`.
 
 ## Details
 
