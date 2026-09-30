@@ -171,8 +171,8 @@ function initialization(f_dist, prior::Distribution, args...;
 
     Threads.@threads for i in 1:n_particles
         ## sample
-        θ = rand(prior)
-        ρinit = f_dist(θ, args...; kwargs...)
+        local θ = rand(prior)
+        local ρinit = f_dist(θ, args...; kwargs...)
         ## store parameter and distances
         population[i] = θ
         distances_prior[i,:] .= ρinit
