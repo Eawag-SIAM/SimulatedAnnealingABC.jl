@@ -52,10 +52,10 @@ The history of ϵ can be accessed with the field `state.ϵ_history`.
 The history of ρ can be accessed with the field `state.ρ_history`.
 The history of u can be accessed with the field `state.u_history`.
 """
-struct SABCresult{T, S}
+struct SABCresult{T, S, R}
     population::Vector{T}
     u::Array{S}  # transformed distances
-    ρ::Array{S}  # user-defined distances
+    ρ::Array{R}  # user-defined distances
     state::SABCstate
 end
 
@@ -188,7 +188,7 @@ function initialization(f_dist, prior::Distribution, args...;
     any(distances_prior .< 0) && error("Negative distances are not allowed!")
 
     cdfs_dist_prior = build_cdf(distances_prior)
-    u = similar(distances_prior)
+    u = similar(distances_prior, float(eltype(distances_prior)))
     # Transformed distances
     for i in 1:n_particles
         u[i,:] .= cdfs_dist_prior(distances_prior[i,:])
