@@ -110,10 +110,25 @@ function update_epsilon_multi_eps(u, v)
         q = ū ./ ūi
         num = 1 + sum(q.^(n/2))
         den = cn*(n+1)*ūi^(1+n/2)*prod(q)
-        βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - ūi, 1/ūi)
+        βi = Roots.find_zero(β -> mean_energy_uniform(β) - ūi,
+                            (-1/(1-ūi), 1/ūi))
         ϵ_new[i] = 1/(βi + v*num/den)
     end
     ϵ_new
+end
+
+"""
+Mean energy of a uniform energy distribution on [0,1] at inverse temperature β,
+U(β) = (1-exp(-β)*(1+β))/(β*(1-exp(-β))) = 1/β - 1/(exp(β)-1), continuously extended at β = 0.
+See eq(20).
+"""
+function mean_energy_uniform(β)
+    if abs(β) < 0.05
+        ## series expansion avoids the removable singularity and cancellation
+        β2 = β^2
+        return 1/2 - β*(1/12 - β2*(1/720 - β2/30240))
+    end
+    1/β - 1/expm1(β)
 end
 
 

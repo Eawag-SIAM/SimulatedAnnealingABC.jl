@@ -28,6 +28,14 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
 end
 
+@testset "Multi-temperature schedule near mean energy 0.5" begin
+    # Reference temperatures from eqs. (19–20) for two equal component means.
+    for (ū, ϵ) in [(0.48, 0.9022939259), (0.49, 1.0493013543), (0.5, 1.25),
+                   (0.51, 1.5410547445), (0.6, -1.4828486793)]
+        @test SimulatedAnnealingABC.update_epsilon_multi_eps(fill(ū, 10, 2), 1.0) ≈ fill(ϵ, 2) rtol=1e-10
+    end
+end
+
 @testset "Single summary statistics" verbose = true begin
     @testset "Sampling 1-dim" begin
 
