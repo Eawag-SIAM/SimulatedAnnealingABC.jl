@@ -2,6 +2,7 @@ using SimulatedAnnealingABC
 using Test
 using Distributions
 using Logging
+import Roots
 
 ENV["CI"] = true                # to disable progress bar
 global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
@@ -28,11 +29,40 @@ global_logger(ConsoleLogger(stderr, Logging.Warn)) # disable logging
 
 end
 
+@testset "Multi-temperature schedule agrees with direct equations" begin
+    # Direct evaluation of eqs. (19–20), away from cancellation and overflow.
+    for ū in ([0.1, 0.2], [0.05, 0.15, 0.25], fill(0.2, 4),
+              collect(range(0.05, 0.25, length=33))), v in (0.001, 1.0, 10.0)
+        n = length(ū)
+        cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
+        ϵ_direct = zeros(n)
+        for i in 1:n
+            q = ū ./ ū[i]
+            num = 1 + sum(q.^(n/2))
+            den = cn*(n+1)*ū[i]^(1+n/2)*prod(q)
+            βi = Roots.find_zero(β -> (1-exp(-β)*(1+β))/(β*(1-exp(-β))) - ū[i], 1/ū[i])
+            ϵ_direct[i] = 1/(βi + v*num/den)
+        end
+        @test SimulatedAnnealingABC.update_epsilon_multi_eps(reshape(ū, 1, :), v) ≈ ϵ_direct rtol=1e-10
+    end
+end
+
 @testset "Multi-temperature schedule near mean energy 0.5" begin
     # Reference temperatures from eqs. (19–20) for two equal component means.
     for (ū, ϵ) in [(0.48, 0.9022939259), (0.49, 1.0493013543), (0.5, 1.25),
                    (0.51, 1.5410547445), (0.6, -1.4828486793)]
         @test SimulatedAnnealingABC.update_epsilon_multi_eps(fill(ū, 10, 2), 1.0) ≈ fill(ϵ, 2) rtol=1e-10
+    end
+end
+
+@testset "Multi-temperature schedule at small energies" begin
+    # Reference temperatures from 256-bit evaluation of eqs. (19–20).
+    for (ū, ϵ) in (([1e-12; fill(0.1, 32)], 2.731426956677075e-22),
+                   ([1f-3; fill(0.1f0, 32)], 0.00021454214784557608),
+                   (fill(0.01f0, 33), 8.129437241622707e-18),
+                   (fill(1e-10, 33), 8.129440421497312e-158),
+                   (fill(1e-10, 68), 3.3748550251e-312))
+        @test SimulatedAnnealingABC.update_epsilon_multi_eps(reshape(ū, 1, :), 1.0)[1] ≈ ϵ rtol=1e-10
     end
 end
 

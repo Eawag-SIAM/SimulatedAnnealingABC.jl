@@ -99,20 +99,35 @@ Update multible ϵ. See eq(19-20) in Albert et al. (in preparation)
 """
 function update_epsilon_multi_eps(u, v)
     n = size(u, 2)        # number of statistics
-    ū = mean(u, dims=1)
-    cn = Float64(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2))))
+    ū = Float64.(mean(u, dims=1))
+    log_cn = Float64(log(factorial(big(2*n+2))/(factorial(big(n+1))*factorial(big(n+2)))))
     ϵ_new = Vector{Float64}(undef, n)
+    ## Some rewriting for numerical stability:
+    ## Equation (19) uses q_j = ū_j/ū_i. With h = n/2,
+    ## ∏ q_j = (∏ ū_j)/ū_i^n and 1 + Σ q_j^h = (ū_i^h + Σ ū_j^h)/ū_i^h,
+    ## so its added inverse-temperature term is v*(ū_i^h + Σ ū_j^h)/(cn*(n+1)*ū_i*∏ ū_j).
+    ## log_sum_ūh computes log(Σ ū_j^h) with a scaled sum; log_force combines
+    ## the numerator and denominator in log space to avoid overflow and underflow.
+    h = n/2
+    log_ū = log.(ū)
+    a = h*maximum(log_ū)
+    log_sum_ūh = a + log(sum(exp.(h .* log_ū .- a)))
+    log_prefactor = log(v) - log_cn - log(n+1) - sum(log_ū)
     for i in 1:n
         ūi = ū[i]
         if ūi <= eps()
             error("Division by zero - Mean u for statistic $i = $ūi")
         end
-        q = ū ./ ūi
-        num = 1 + sum(q.^(n/2))
-        den = cn*(n+1)*ūi^(1+n/2)*prod(q)
+        log_force = log_prefactor + log_sum_ūh + log1p(exp(h*log_ū[i]-log_sum_ūh)) - log_ū[i]
         βi = Roots.find_zero(β -> mean_energy_uniform(β) - ūi,
                             (-1/(1-ūi), 1/ūi))
-        ϵ_new[i] = 1/(βi + v*num/den)
+        if log_force > 0
+            ## The reciprocal can be representable even when the force overflows.
+            inv_force = exp(-log_force)
+            ϵ_new[i] = inv_force/(1 + βi*inv_force)
+        else
+            ϵ_new[i] = 1/(βi + exp(log_force))
+        end
     end
     ϵ_new
 end
