@@ -36,6 +36,10 @@ expensive that conventional MCMC algorithms are no longer feasible.
 
 ## References
 
+
+Albert, C., Ulzega, S., Dirmeier, S., Scheidegger, A., Bassi, A., Mira, A., 2026. A thermodynamic approach to Approximate Bayesian Computation with multiple summary statistics. [https://doi.org/10.48550/arXiv.2505.23261](https://doi.org/10.48550/arXiv.2505.23261)
+
+
 Albert, C., Künsch, H.R., Scheidegger, A., 2015. A simulated annealing
 approach to approximate Bayes computations. Statistics and computing
 25, 1217–1232. [https://doi.org/10.1007/s11222-014-9507-8](https://doi.org/10.1007/s11222-014-9507-8)
